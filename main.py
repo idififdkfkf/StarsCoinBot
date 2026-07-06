@@ -44,3 +44,38 @@ app.add_handler(CallbackQueryHandler(buttons))
 
 print("Bot Started...")
 app.run_polling()
+elif query.data == "profile":
+    await query.edit_message_text(
+        text=f"""
+👤 اطلاعات حساب
+
+🆔 آیدی: {query.from_user.id}
+👤 نام: {query.from_user.first_name}
+
+💎 اشتراک: رایگان
+💰 موجودی: 0 تومان
+⭐ استار: 0
+
+به ربات خوش آمدید 🌟
+""",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("💎 خرید اشتراک", callback_data="vip")],
+            [InlineKeyboardButton("💰 شارژ کیف پول", callback_data="wallet")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="home")]
+        ])
+    )elif query.data == "home":
+    keyboard = [
+        [InlineKeyboardButton("🛒 خرید استارز", callback_data="stars")],
+        [InlineKeyboardButton("💎 خرید اشتراک", callback_data="vip")],
+        [InlineKeyboardButton("👤 حساب کاربری", callback_data="profile")],
+        [InlineKeyboardButton("💰 کیف پول", callback_data="wallet")],
+        [InlineKeyboardButton("🎁 هدیه روزانه", callback_data="gift")],
+        [InlineKeyboardButton("🎮 بازی", callback_data="game")],
+        [InlineKeyboardButton("📞 پشتیبانی", callback_data="support")],
+        [InlineKeyboardButton("⚙️ تنظیمات", callback_data="settings")]
+    ]
+
+    await query.edit_message_text(
+        "🌟 منوی اصلی",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
