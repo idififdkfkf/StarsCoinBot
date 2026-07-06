@@ -1,18 +1,17 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 
 TOKEN = "7357995901:AAHqGAaiDIG1esP8Z59cBGuDhZmju7KG8ts"
-
 ADMIN_ID = 6188951798
 CHANNEL = "@Hamster20255555"
 
 
-# 🏠 منوی اصلی (دکمه معمولی)
+# 🧠 منوی اصلی
 main_menu = ReplyKeyboardMarkup(
     [
         ["👤 پروفایل", "💰 موجودی"],
-        ["💎 اشتراک", "🪙 کوین"],
-        ["🎁 هدیه", "🎮 بازی"],
+        ["💎 اشتراک", "🛒 خرید"],
+        ["🎮 بازی", "🎁 هدیه"],
         ["📞 پشتیبانی", "⚙️ تنظیمات"],
     ],
     resize_keyboard=True
@@ -28,7 +27,7 @@ async def check_member(user_id, bot):
         return False
 
 
-# 🚀 شروع ربات
+# 🚀 شروع
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
 
@@ -36,101 +35,93 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{CHANNEL.replace('@','')}")],
-            [InlineKeyboardButton("✅ عضو شدم", callback_data="check_join")]
+            [InlineKeyboardButton("✅ بررسی عضویت", callback_data="check")]
         ])
 
         await update.message.reply_text(
-            "🔒 برای ورود باید عضو کانال باشید",
+            "🔒 برای ورود عضو کانال شوید",
             reply_markup=keyboard
         )
         return
 
     await update.message.reply_text(
-        f"""🔥 سلام {user.first_name}
-
-به ربات الماس کوین خوش آمدید 💎
-""",
+        f"👋 سلام {user.first_name}\nبه ربات خوش آمدید 💎",
         reply_markup=main_menu
     )
 
 
 # 🎯 دکمه‌ها
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+    q = update.callback_query
+    await q.answer()
 
-    user = query.from_user
+    user = q.from_user
 
-    # عضویت
-    if query.data == "check_join":
+    # بررسی عضویت
+    if q.data == "check":
         if await check_member(user.id, context.bot):
-            await query.message.delete()
-            await query.message.reply_text("✅ عضویت تایید شد", reply_markup=main_menu)
+            await q.message.delete()
+            await q.message.reply_text("✅ خوش آمدید", reply_markup=main_menu)
         else:
-            await query.answer("❌ هنوز عضو نیستی", show_alert=True)
+            await q.answer("❌ هنوز عضو نیستی", show_alert=True)
 
-    # پروفایل خفن
-    elif query.data == "profile":
 
+    # 👤 پروفایل
+    elif q.data == "profile":
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("💰 موجودی شیشه‌ای", callback_data="balance")],
-            [InlineKeyboardButton("💎 نوع اشتراک", callback_data="vip")],
-            [InlineKeyboardButton("🔙 بازگشت", callback_data="home")]
+            [InlineKeyboardButton("💰 موجودی", callback_data="balance")],
+            [InlineKeyboardButton("💎 اشتراک", callback_data="vip")],
+            [InlineKeyboardButton("🔙 برگشت", callback_data="back")]
         ])
 
-        await query.message.edit_text(
-            f"""👤 پروفایل کاربر
+        await q.message.edit_text(
+f"""
+👤 پروفایل
 
-🆔 آیدی عددی: {user.id}
+🆔 آیدی: {user.id}
 👤 نام: {user.first_name}
-📝 بیو: ندارد
 
-💎 اشتراک: عادی | افسانه‌ای | اختصاصی
-💰 موجودی کوین: 0
-
-⏰ ساعت ورود: فعال
+💰 موجودی: 0
+💎 اشتراک: عادی
 ⚠️ اخطار: 0
-
-🔥 وضعیت: آنلاین
 """,
             reply_markup=keyboard
         )
 
-    # موجودی
-    elif query.data == "balance":
-        await query.message.edit_text(
-            "💰 موجودی شما: 0 کوین 💎",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 بازگشت", callback_data="profile")]
-            ])
+
+    # 💰 موجودی
+    elif q.data == "balance":
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 برگشت", callback_data="profile")]
+        ])
+
+        await q.message.edit_text(
+            "💰 موجودی شما: 0",
+            reply_markup=keyboard
         )
 
-    # اشتراک
-    elif query.data == "vip":
-        await query.message.edit_text(
-            "💎 نوع اشتراک: عادی",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 بازگشت", callback_data="profile")]
-            ])
+
+    # 💎 اشتراک
+    elif q.data == "vip":
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 برگشت", callback_data="profile")]
+        ])
+
+        await q.message.edit_text(
+            "💎 اشتراک: عادی",
+            reply_markup=keyboard
         )
 
-    # بازگشت
-    elif query.data == "home":
-        await query.message.edit_text("🏠 منو", reply_markup=main_menu)
+
+    # 🔙 برگشت به منو اصلی
+    elif q.data == "back":
+        await q.message.edit_text("🏠 منوی اصلی")
+        await q.message.reply_text("👇", reply_markup=main_menu)
 
 
-# 🧠 پیام‌های متنی
-async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-
-    if text == "👤 پروفایل":
-        await update.message.reply_text("👆 از دکمه بالا استفاده کن")
-
-    elif text == "💰 موجودی":
-        await update.message.reply_text("💰 موجودی: 0")
-
-    else:
-        await update.message.reply_text("از منو استفاده کن 👇", reply_markup=main_menu)
+# 🧠 پیام‌ها
+async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("از منو استفاده کن 👇", reply_markup=main_menu)
 
 
 # 🚀 اجرا
@@ -138,7 +129,7 @@ app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(buttons))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text))
 
-print("Bot is running...")
+print("Bot Running...")
 app.run_polling()
