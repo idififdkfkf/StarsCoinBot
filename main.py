@@ -1,17 +1,19 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
+from datetime import datetime
 
 TOKEN = "7357995901:AAHqGAaiDIG1esP8Z59cBGuDhZmju7KG8ts"
+
 ADMIN_ID = 6188951798
 CHANNEL = "@Hamster20255555"
 
 
-# 🧠 منوی اصلی (خیلی تمیز)
+# 🏠 منوی اصلی (تمیز)
 main_menu = ReplyKeyboardMarkup(
     [
         ["👤 پروفایل", "💰 موجودی"],
-        ["💎 اشتراک", "🛒 خرید"],
-        ["🎮 بازی", "🎁 هدیه"],
+        ["💎 اشتراک", "🪙 کوین"],
+        ["🎁 هدیه", "🎮 بازی"],
         ["📞 پشتیبانی", "⚙️ تنظیمات"],
     ],
     resize_keyboard=True
@@ -27,7 +29,7 @@ async def check_member(user_id, bot):
         return False
 
 
-# 🚀 شروع
+# 🚀 شروع ربات
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
 
@@ -35,7 +37,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{CHANNEL.replace('@','')}")],
-            [InlineKeyboardButton("✅ بررسی عضویت", callback_data="check")]
+            [InlineKeyboardButton("✅ عضو شدم", callback_data="check")]
         ])
 
         await update.message.reply_text(
@@ -45,17 +47,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(
-        f"👋 سلام {user.first_name}\nبه ربات خوش آمدید 💎",
+        f"👋 سلام {user.first_name}\nبه ربات الماس کوین خوش آمدید 💎",
         reply_markup=main_menu
     )
 
 
-# 🎯 کنترل دکمه‌ها
+# 🎯 دکمه‌ها
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
 
     user = q.from_user
+
+    now = datetime.now().strftime("%Y-%m-%d | %H:%M")
 
     # بررسی عضویت
     if q.data == "check":
@@ -66,50 +70,49 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.answer("❌ هنوز عضو نیستی", show_alert=True)
 
 
-    # 👤 پروفایل (خیلی خفن)
+    # 👤 پروفایل خفن
     elif q.data == "profile":
 
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("💰 موجودی", callback_data="balance")],
-            [InlineKeyboardButton("💎 اشتراک", callback_data="vip")]
+            [InlineKeyboardButton("💰 موجودی شیشه‌ای", callback_data="balance")],
+            [InlineKeyboardButton("🔙 برگشت", callback_data="home")]
         ])
 
         await q.message.edit_text(
 f"""
 👤 پروفایل کاربر
 
-🆔 آیدی: {user.id}
+🆔 آیدی عددی: {user.id}
 👤 نام: {user.first_name}
+📝 بیو: ندارد
 
-💎 اشتراک: عادی
-💰 موجودی: 0
+💎 نوع اشتراک: عادی
+🪙 موجودی کوین: 0
+👥 زیرمجموعه: 0
+
+⏰ تاریخ و ساعت: {now}
 ⚠️ اخطار: 0
+
+🔥 وضعیت: آنلاین
 """,
             reply_markup=keyboard
         )
 
 
+    # 💰 موجودی شیشه‌ای
     elif q.data == "balance":
         await q.message.edit_text(
-            "💰 موجودی شما: 0",
+            "💰 موجودی شما:\n\n🟩 10 کوین (شیشه‌ای)\n\n⛔ هنوز سیستم شارژ فعال نشده",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 بستن", callback_data="close")]
+                [InlineKeyboardButton("🔙 برگشت", callback_data="profile")]
             ])
         )
 
 
-    elif q.data == "vip":
-        await q.message.edit_text(
-            "💎 اشتراک: عادی",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 بستن", callback_data="close")]
-            ])
-        )
-
-
-    # ❌ هیچ برگشتی داخل منو نداریم (طبق حرفت)
-    elif q.data == "close":
-        await q.message.delete()
+    # 🏠 برگشت
+    elif q.data == "home":
+        await q.message.edit_text("🏠 منوی اصلی")
+        await q.message.reply_text("👇", reply_markup=main_menu)
 
 
 # 🧠 پیام‌ها
