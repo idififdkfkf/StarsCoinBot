@@ -1,80 +1,151 @@
-# ===== تنظیمات =====
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup
+)
+
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
+)
+
+from datetime import datetime
+
 
 TOKEN = "8818731091:AAHYaM4Wf9gZipqKJfXSwQhFx4qzKgnzFPQ"
 
-BOT_NAME = "💎 لیبر کوین"
-
-CHANNEL_USERNAME = "@Libercoin1"
+CHANNEL = "@Libercoin1"
 
 ADMIN_ID = 6188951798
 
-BOT_VERSION = "1.0"
 
+# =========================
+# منوی اصلی Liber Coin
+# =========================
 
-# ===== منوی اصلی =====
-
-MAIN_MENU = ReplyKeyboardMarkup(
-[
-["👤 پروفایل", "💰 موجودی"],
-["💸 برداشت استارز", "💎 خرید اشتراک"],
-["🪙 کوین", "👥 زیرمجموعه"],
-["🎁 هدیه روزانه", "📊 وضعیت"],
-["📞 پشتیبانی", "⚙️ تنظیمات"],
-],
-resize_keyboard=True,
-input_field_placeholder="یکی از گزینه‌ها را انتخاب کنید..."
+main_menu = ReplyKeyboardMarkup(
+    [
+        ["👤 پروفایل", "💰 کیف پول"],
+        ["🪙 ارز LIBER", "💎 اشتراک"],
+        ["🎮 بازی‌ها", "🏆 رنک"],
+        ["🎁 هدیه روزانه", "👥 زیرمجموعه"],
+        ["🛒 فروشگاه", "🏛 مزایده"],
+        ["📞 پشتیبانی", "⚙️ تنظیمات"]
+    ],
+    resize_keyboard=True
 )
 
 
-# ===== پیام شروع =====
+
+# =========================
+# بررسی عضویت
+# =========================
+
+async def check_join(user_id, bot):
+
+    try:
+        member = await bot.get_chat_member(
+            CHANNEL,
+            user_id
+        )
+
+        return member.status in [
+            "member",
+            "administrator",
+            "creator"
+        ]
+
+    except:
+        return False
+
+
+
+# =========================
+# شروع ربات
+# =========================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
 
-    if not await check_member(user.id, context.bot):
+
+    if not await check_join(
+        user.id,
+        context.bot
+    ):
 
         keyboard = InlineKeyboardMarkup(
-        [
             [
-                InlineKeyboardButton(
-                    "📢 عضویت در کانال",
-                    url="https://t.me/Libercoin1"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "✅ عضو شدم",
-                    callback_data="check_join"
-                )
+                [
+                    InlineKeyboardButton(
+                        "📢 عضویت در کانال",
+                        url="https://t.me/Libercoin1"
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "✅ عضو شدم",
+                        callback_data="check_join"
+                    )
+                ]
             ]
-        ]
         )
 
+
         await update.message.reply_text(
-f"""
-🔒 برای استفاده از {BOT_NAME}
+            """
+🔒 برای ورود به Liber Coin
 
-ابتدا در کانال رسمی عضو شوید.
+ابتدا عضو کانال رسمی شوید.
 
-بعد روی «✅ عضو شدم» بزنید.
-""",
-reply_markup=keyboard
-)
+بعد روی «عضو شدم» بزنید.
+            """,
+            reply_markup=keyboard
+        )
 
         return
 
+
+
     await update.message.reply_text(
+
 f"""
-💎 سلام {user.first_name}
+🔥 سلام {user.first_name}
 
-به ربات {BOT_NAME} خوش آمدید.
+به ربات رسمی Liber Coin خوش آمدید 🪙
 
-🚀 نسخه : {BOT_VERSION}
+🌟 دنیای بازی، ارز، رقابت و جایزه
 
-🟢 وضعیت ربات : آنلاین
-
-یکی از گزینه‌های زیر را انتخاب کنید.
+از منوی زیر انتخاب کنید 👇
 """,
-reply_markup=MAIN_MENU
+
+        reply_markup=main_menu
+    )
+
+
+
+# =========================
+# اجرا
+# =========================
+
+app = ApplicationBuilder().token(TOKEN).build()
+
+
+app.add_handler(
+    CommandHandler(
+        "start",
+        start
+    )
 )
+
+
+print("Liber Coin Started...")
+
+
+app.run_polling()
