@@ -1,4 +1,4 @@
-from telegram import (
+from telegram import (from datetime import timedelta
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -17,11 +17,11 @@ from telegram.ext import (
 from datetime import datetime
 
 
-TOKEN = "8818731091:AAHYaM4Wf9gZipqKJfXSwQhFx4qzKgnzFPQ"
-
-ADMIN_ID = 6188951798
+TOKEN = "توکن_ربات_خودت"
 
 CHANNEL = "@Libercoin1"
+
+ADMIN_ID = 6188951798
 
 
 users = {}
@@ -30,12 +30,13 @@ users = {}
 MAIN_MENU = ReplyKeyboardMarkup(
     [
         ["👤 پروفایل", "💰 موجودی"],
-        ["💎 اشتراک", "👥 زیرمجموعه"],
-        ["🎮 بازی‌ها", "🛒 فروشگاه"],
-        ["🏆 رتبه‌بندی", "📞 پشتیبانی"]
+        ["🪙 LIBER", "📊 آمار"],
+        ["👥 زیرمجموعه", "🎮 بازی‌ها"],
+        ["🛒 فروشگاه", "📞 پشتیبانی"]
     ],
     resize_keyboard=True
 )
+
 
 
 def get_user(user):
@@ -43,12 +44,14 @@ def get_user(user):
     if user.id not in users:
 
         users[user.id] = {
+
             "name": user.first_name,
             "liber": 100,
-            "stars": 0,
-            "vip": "عادی",
             "ref": 0,
-            "warn": 0
+            "warn": 0,
+            "vip": "عادی",
+            "join": datetime.now()
+
         }
 
     return users[user.id]
@@ -81,20 +84,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
 
 
-    if not await check_member(user.id, context.bot):
+    if not await check_member(
+        user.id,
+        context.bot
+    ):
 
         keyboard = InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton(
                         "📢 عضویت کانال",
-                        url="https://t.me/Libercoin1"
+                        url=f"https://t.me/{CHANNEL.replace('@','')}"
                     )
                 ],
+
                 [
                     InlineKeyboardButton(
                         "✅ عضو شدم",
-                        callback_data="check"
+                        callback_data="join"
                     )
                 ]
             ]
@@ -102,23 +109,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
         await update.message.reply_text(
+
 f"""
 🔥 سلام {user.first_name}
 
-به Liber Coin خوش آمدید 🪙
+به ربات Liber Coin خوش آمدید 🪙
 
-برای ورود ابتدا عضو کانال شوید.
+برای شروع عضو کانال شوید.
 """,
-            reply_markup=keyboard
+
+reply_markup=keyboard
+
         )
 
         return
+
 
 
     get_user(user)
 
 
     await update.message.reply_text(
+
 f"""
 🎉 خوش آمدید {user.first_name}
 
@@ -126,12 +138,14 @@ f"""
 
 به دنیای Liber Coin وارد شدید 🪙
 """,
-        reply_markup=MAIN_MENU
+
+reply_markup=MAIN_MENU
+
     )
 
 
 
-async def check_button(update, context):
+async def join_check(update, context):
 
     query = update.callback_query
 
@@ -140,9 +154,13 @@ async def check_button(update, context):
     await query.answer()
 
 
-    if await check_member(user.id, context.bot):
+    if await check_member(
+        user.id,
+        context.bot
+    ):
 
         get_user(user)
+
 
         await query.edit_message_text(
 """
@@ -168,7 +186,6 @@ async def check_button(update, context):
 
 
 
-
 async def profile(update, context):
 
     user = update.effective_user
@@ -177,11 +194,12 @@ async def profile(update, context):
 
 
     await update.message.reply_text(
+
 f"""
 ╭━━ 🪙 Liber Coin ━━╮
 
 👤 نام:
-{user.first_name}
+{data['name']}
 
 🆔 آیدی:
 {user.id}
@@ -189,19 +207,16 @@ f"""
 🪙 LIBER:
 {data['liber']}
 
-⭐ Stars:
-{data['stars']}
-
-💎 اشتراک:
-{data['vip']}
-
 👥 زیرمجموعه:
 {data['ref']}
 
 ⚠️ اخطار:
 {data['warn']}
 
-🕒 ساعت:
+💎 اشتراک:
+{data['vip']}
+
+🕒 زمان:
 {datetime.now().strftime("%H:%M:%S")}
 
 ╰━━━━━━━━━━━━╯
@@ -212,17 +227,71 @@ f"""
 
 async def balance(update, context):
 
-    data = get_user(update.effective_user)
+    data = get_user(
+        update.effective_user
+    )
+
 
     await update.message.reply_text(
+
 f"""
-💰 کیف پول
+💰 موجودی شما
+
+🪙 LIBER:
+{data['liber']}
+"""
+    )
+
+
+
+async def stats(update, context):
+
+    user = update.effective_user
+
+    data = get_user(user)
+
+
+    await update.message.reply_text(
+
+f"""
+📊 آمار شما
 
 🪙 LIBER:
 {data['liber']}
 
-⭐ Stars:
-{data['stars']}
+👥 زیرمجموعه:
+{data['ref']}
+
+⚠️ اخطار:
+{data['warn']}
+"""
+    )
+
+
+
+async def referral(update, context):
+
+    user = update.effective_user
+
+    data = get_user(user)
+
+
+    bot = await context.bot.get_me()
+
+    link = f"https://t.me/{bot.username}?start={user.id}"
+
+
+    await update.message.reply_text(
+
+f"""
+👥 سیستم زیرمجموعه
+
+لینک شما:
+
+{link}
+
+تعداد دعوت:
+{data['ref']}
 """
     )
 
@@ -231,15 +300,19 @@ f"""
 app = ApplicationBuilder().token(TOKEN).build()
 
 
+
 app.add_handler(
-    CommandHandler("start", start)
+    CommandHandler(
+        "start",
+        start
+    )
 )
 
 
 app.add_handler(
     CallbackQueryHandler(
-        check_button,
-        pattern="check"
+        join_check,
+        pattern="join"
     )
 )
 
@@ -260,8 +333,237 @@ app.add_handler(
 )
 
 
+app.add_handler(
+    MessageHandler(
+        filters.Regex("^📊 آمار$"),
+        stats
+    )
+)
+
+
+app.add_handler(
+    MessageHandler(
+        filters.Regex("^👥 زیرمجموعه$"),
+        referral
+    )
+)
+
 
 print("🔥 Liber Coin V1 Started")
 
+# =========================
+# Liber Coin V2
+# VIP System
+# =========================
 
+
+VIP_PLANS = {
+
+    "p3": {
+        "name": "💎 Premium",
+        "month": 3,
+        "price": 70
+    },
+
+    "p6": {
+        "name": "💎 Premium",
+        "month": 6,
+        "price": 130
+    },
+
+    "p12": {
+        "name": "💎 Premium",
+        "month": 12,
+        "price": 160
+    },
+
+
+    "l3": {
+        "name": "👑 Liber Premium",
+        "month": 3,
+        "price": 150
+    },
+
+    "l6": {
+        "name": "👑 Liber Premium",
+        "month": 6,
+        "price": 200
+    },
+
+    "l12": {
+        "name": "👑 Liber Premium",
+        "month": 12,
+        "price": 250
+    }
+
+}
+
+
+
+async def vip_menu(update, context):
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "💎 Premium",
+                    callback_data="premium"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "👑 Liber Premium",
+                    callback_data="liber"
+                )
+            ]
+        ]
+    )
+
+
+    await update.message.reply_text(
+
+"""
+💎 خرید اشتراک Liber Coin
+
+نوع اشتراک را انتخاب کنید:
+""",
+
+reply_markup=keyboard
+
+    )
+
+
+
+async def vip_select(update, context):
+
+    query = update.callback_query
+
+    await query.answer()
+
+
+    if query.data == "premium":
+
+        buttons = [
+
+            ("3 ماه ⭐70", "p3"),
+
+            ("6 ماه ⭐130", "p6"),
+
+            ("12 ماه ⭐160", "p12")
+
+        ]
+
+    else:
+
+        buttons = [
+
+            ("3 ماه ⭐150", "l3"),
+
+            ("6 ماه ⭐200", "l6"),
+
+            ("12 ماه ⭐250", "l12")
+
+        ]
+
+
+
+    keyboard = InlineKeyboardMarkup(
+
+        [
+
+            [
+
+                InlineKeyboardButton(
+                    text,
+                    callback_data=data
+                )
+
+            ]
+
+            for text,data in buttons
+
+        ]
+
+    )
+
+
+    await query.edit_message_text(
+
+        "⏳ مدت اشتراک را انتخاب کنید:",
+
+        reply_markup=keyboard
+
+    )
+
+
+
+
+async def buy_vip(update, context):
+
+    query = update.callback_query
+
+    user = query.from_user
+
+
+    data = get_user(user)
+
+
+    plan = VIP_PLANS.get(
+        query.data
+    )
+
+
+    if not plan:
+        return
+
+
+
+    end = datetime.now() + timedelta(
+
+        days=plan["month"] * 30
+
+    )
+
+
+
+    data["vip"] = plan["name"]
+
+    data["vip_end"] = end.strftime(
+        "%Y/%m/%d"
+    )
+
+
+
+    await query.answer()
+
+
+
+    await query.edit_message_text(
+
+f"""
+🎉 تبریک {user.first_name}
+
+اشتراک شما فعال شد ✅
+
+
+💎 نوع:
+{plan['name']}
+
+
+⏳ مدت:
+{plan['month']} ماه
+
+
+⭐ هزینه:
+{plan['price']} Stars
+
+
+📅 پایان:
+{data['vip_end']}
+
+
+🚀 از امکانات ویژه Liber Coin لذت ببرید
+"""
+    )
 app.run_polling()
