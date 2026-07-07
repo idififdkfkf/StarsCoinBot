@@ -197,3 +197,4 @@ elif q.data == "admin_settings":
 elif q.data == "admin_back":
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats")
+         app.add_handler(CommandHandler("admin", admin))
