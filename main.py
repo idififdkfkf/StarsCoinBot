@@ -30,11 +30,9 @@ users = {}
 MAIN_MENU = ReplyKeyboardMarkup(
     [
         ["👤 پروفایل", "💰 موجودی"],
-        ["🪙 LIBER", "⭐ Stars"],
         ["💎 اشتراک", "👥 زیرمجموعه"],
-        ["🎮 بازی‌ها", "🏆 رتبه‌بندی"],
-        ["🛒 فروشگاه", "📞 پشتیبانی"],
-        ["⚙️ تنظیمات"]
+        ["🎮 بازی‌ها", "🛒 فروشگاه"],
+        ["🏆 رتبه‌بندی", "📞 پشتیبانی"]
     ],
     resize_keyboard=True
 )
@@ -45,15 +43,12 @@ def get_user(user):
     if user.id not in users:
 
         users[user.id] = {
-
             "name": user.first_name,
             "liber": 100,
             "stars": 0,
-            "ref": 0,
-            "warn": 0,
             "vip": "عادی",
-            "join": datetime.now()
-
+            "ref": 0,
+            "warn": 0
         }
 
     return users[user.id]
@@ -86,111 +81,80 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
 
 
-    if not await check_member(
-        user.id,
-        context.bot
-    ):
-
+    if not await check_member(user.id, context.bot):
 
         keyboard = InlineKeyboardMarkup(
             [
-
                 [
                     InlineKeyboardButton(
                         "📢 عضویت کانال",
                         url="https://t.me/Libercoin1"
                     )
                 ],
-
                 [
                     InlineKeyboardButton(
                         "✅ عضو شدم",
-                        callback_data="check_join"
+                        callback_data="check"
                     )
                 ]
-
             ]
         )
 
 
         await update.message.reply_text(
-
 f"""
 🔥 سلام {user.first_name}
 
-به ربات Liber Coin خوش آمدید 🪙
+به Liber Coin خوش آمدید 🪙
 
-برای شروع ابتدا عضو کانال شوید.
-
-بعد از عضویت روی دکمه عضو شدم بزنید.
+برای ورود ابتدا عضو کانال شوید.
 """,
-
-reply_markup=keyboard
-
+            reply_markup=keyboard
         )
 
         return
-
 
 
     get_user(user)
 
 
     await update.message.reply_text(
-
 f"""
 🎉 خوش آمدید {user.first_name}
 
+حساب شما فعال شد ✅
+
 به دنیای Liber Coin وارد شدید 🪙
-
-💰 اقتصاد
-🎮 بازی
-🏆 رقابت
-💎 اشتراک
-
-همه آماده است!
 """,
-
-reply_markup=MAIN_MENU
-
+        reply_markup=MAIN_MENU
     )
 
 
 
-
-async def check_join(update, context):
+async def check_button(update, context):
 
     query = update.callback_query
 
     user = query.from_user
 
-
     await query.answer()
 
 
-    if await check_member(
-        user.id,
-        context.bot
-    ):
-
+    if await check_member(user.id, context.bot):
 
         get_user(user)
 
-
         await query.edit_message_text(
-
-f"""
+"""
 ✅ عضویت شما تایید شد
 
-🔥 خوش آمدید {user.first_name}
-
-حساب شما فعال شد.
+🔥 خوش آمدید به Liber Coin
 """
         )
 
 
         await query.message.reply_text(
-            "🪙 منوی اصلی Liber Coin",
+            "🪙 منوی اصلی",
             reply_markup=MAIN_MENU
         )
 
@@ -212,13 +176,7 @@ async def profile(update, context):
     data = get_user(user)
 
 
-    now = datetime.now().strftime(
-        "%H:%M:%S"
-    )
-
-
     await update.message.reply_text(
-
 f"""
 ╭━━ 🪙 Liber Coin ━━╮
 
@@ -234,20 +192,17 @@ f"""
 ⭐ Stars:
 {data['stars']}
 
+💎 اشتراک:
+{data['vip']}
+
 👥 زیرمجموعه:
 {data['ref']}
 
 ⚠️ اخطار:
 {data['warn']}
 
-💎 اشتراک:
-{data['vip']}
-
-🤖 وضعیت:
-فعال
-
 🕒 ساعت:
-{now}
+{datetime.now().strftime("%H:%M:%S")}
 
 ╰━━━━━━━━━━━━╯
 """
@@ -257,15 +212,11 @@ f"""
 
 async def balance(update, context):
 
-    user = update.effective_user
-
-    data = get_user(user)
-
+    data = get_user(update.effective_user)
 
     await update.message.reply_text(
-
 f"""
-💰 کیف پول شما
+💰 کیف پول
 
 🪙 LIBER:
 {data['liber']}
@@ -277,23 +228,18 @@ f"""
 
 
 
-
 app = ApplicationBuilder().token(TOKEN).build()
 
 
-
 app.add_handler(
-    CommandHandler(
-        "start",
-        start
-    )
+    CommandHandler("start", start)
 )
 
 
 app.add_handler(
     CallbackQueryHandler(
-        check_join,
-        pattern="check_join"
+        check_button,
+        pattern="check"
     )
 )
 
@@ -315,137 +261,7 @@ app.add_handler(
 
 
 
-print(
-"🔥 Liber Coin V1 Started"
-)
+print("🔥 Liber Coin V1 Started")
 
 
 app.run_polling()
-# =========================
-# Liber Coin V2
-# سیستم اشتراک
-# =========================
-
-
-from datetime import timedelta
-
-
-VIP_PLANS = {
-
-    "premium_3": {
-        "name": "💎 Premium",
-        "time": "3 ماه",
-        "price": 70
-    },
-
-    "premium_6": {
-        "name": "💎 Premium",
-        "time": "6 ماه",
-        "price": 130
-    },
-
-    "premium_12": {
-        "name": "💎 Premium",
-        "time": "12 ماه",
-        "price": 160
-    },
-
-
-    "liber_3": {
-        "name": "👑 Liber Premium",
-        "time": "3 ماه",
-        "price": 150
-    },
-
-    "liber_6": {
-        "name": "👑 Liber Premium",
-        "time": "6 ماه",
-        "price": 200
-    },
-
-    "liber_12": {
-        "name": "👑 Liber Premium",
-        "time": "12 ماه",
-        "price": 250
-    }
-
-}
-
-
-
-
-async def vip_menu(update, context):
-
-    keyboard = InlineKeyboardMarkup([
-
-        [
-            InlineKeyboardButton(
-                "💎 Premium",
-                callback_data="premium"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "👑 Liber Premium",
-                callback_data="liber_premium"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⬅️ برگشت",
-                callback_data="back"
-            )
-        ]
-
-    ])
-
-
-    await update.message.reply_text(
-
-"""
-💎 خرید اشتراک Liber Coin
-
-نوع اشتراک را انتخاب کنید:
-""",
-
-reply_markup=keyboard
-
-    )# =========================
-# Liber Coin V3
-# سیستم زیرمجموعه
-# =========================
-
-
-REF_REWARD_NORMAL = 100
-REF_REWARD_VIP = 150
-
-
-
-async def referral(update, context):
-
-    user = update.effective_user
-
-    data = get_user(user)
-
-
-    bot_username = (await context.bot.get_me()).username
-
-
-    link = (
-        f"https://t.me/{bot_username}"
-        f"?start={user.id}"
-    )
-
-
-    await update.message.reply_text(
-
-f"""app.add_handler(
-    MessageHandler(
-        filters.Regex("^👥 زیرمجموعه$"),
-        referral
-    )
-)
-
-👥
