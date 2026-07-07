@@ -121,3 +121,79 @@ app.add_handler(CallbackQueryHandler(buttons))
 print("Bot Started...")
 
 app.run_polling()
+# ===== پنل مدیریت =====
+
+ADMIN_ID = 6188951798
+
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ شما دسترسی به پنل مدیریت ندارید.")
+        return
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats")],
+        [InlineKeyboardButton("👥 کاربران", callback_data="admin_users")],
+        [InlineKeyboardButton("📢 پیام همگانی", callback_data="admin_broadcast")],
+        [InlineKeyboardButton("🎁 هدیه همگانی", callback_data="admin_gift")],
+        [InlineKeyboardButton("⚙️ تنظیمات", callback_data="admin_settings")],
+        [InlineKeyboardButton("🔙 برگشت", callback_data="home")]
+    ])
+
+    await update.message.reply_text(
+        "👑 پنل مدیریت الماس‌کوین",
+        reply_markup=keyboard
+    )
+
+
+# ===== دکمه‌های پنل مدیریت =====
+
+elif q.data == "admin_stats":
+    await q.message.edit_text(
+        """📊 آمار ربات
+
+👥 کاربران: 0
+🟢 آنلاین: 0
+💎 کل کوین: 0
+⭐ کل استار: 0
+⚠️ اخطارها: 0
+""",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 برگشت", callback_data="admin_back")]
+        ])
+    )
+
+elif q.data == "admin_users":
+    await q.message.edit_text(
+        "👥 لیست کاربران\n\nفعلاً کاربری ثبت نشده است.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 برگشت", callback_data="admin_back")]
+        ])
+    )
+
+elif q.data == "admin_broadcast":
+    await q.message.edit_text(
+        "📢 سیستم پیام همگانی\n\n🚧 به‌زودی فعال می‌شود.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 برگشت", callback_data="admin_back")]
+        ])
+    )
+
+elif q.data == "admin_gift":
+    await q.message.edit_text(
+        "🎁 هدیه همگانی\n\n🚧 به‌زودی فعال می‌شود.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 برگشت", callback_data="admin_back")]
+        ])
+    )
+
+elif q.data == "admin_settings":
+    await q.message.edit_text(
+        "⚙️ تنظیمات مدیریت\n\n🚧 به‌زودی فعال می‌شود.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 برگشت", callback_data="admin_back")]
+        ])
+    )
+
+elif q.data == "admin_back":
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats")
