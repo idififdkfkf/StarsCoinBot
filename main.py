@@ -1,21 +1,6 @@
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    ReplyKeyboardMarkup
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
-    ContextTypes
-)
-
-
-# =========================
-# تنظیمات Liber Coin
-# =========================
 
 TOKEN = "8818731091:AAHYaM4Wf9gZipqKJfXSwQhFx4qzKgnzFPQ"
 
@@ -24,37 +9,26 @@ ADMIN_ID = 6188951798
 CHANNEL = "@Libercoin1"
 
 
-
-# =========================
 # منوی اصلی
-# =========================
-
 MAIN_MENU = ReplyKeyboardMarkup(
     [
         ["👤 پروفایل", "💰 موجودی"],
         ["🪙 ارز LIBER", "💎 اشتراک"],
-        ["🎮 بازی‌ها", "🏆 رتبه‌بندی"],
-        ["🎁 هدیه روزانه", "👥 زیرمجموعه"],
-        ["🛒 فروشگاه", "🏛 مزایده"],
-        ["💸 برداشت", "📞 پشتیبانی"],
-        ["⚙️ تنظیمات"]
+        ["🎮 بازی‌ها", "👥 زیرمجموعه"],
+        ["🛒 فروشگاه", "📞 پشتیبانی"]
     ],
     resize_keyboard=True
 )
 
 
 
-# =========================
 # بررسی عضویت
-# =========================
-
 async def check_member(user_id, bot):
 
     try:
-
         member = await bot.get_chat_member(
-            CHANNEL,
-            user_id
+            chat_id=CHANNEL,
+            user_id=user_id
         )
 
         if member.status in [
@@ -66,63 +40,49 @@ async def check_member(user_id, bot):
 
         return False
 
-    except:
-
+    except Exception as e:
+        print("CHECK ERROR:", e)
         return False
 
 
 
-# =========================
-# دستور شروع
-# =========================
-
+# شروع
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
 
 
-    joined = await check_member(
-        user.id,
-        context.bot
-    )
-
-
-    if not joined:
-
+    if not await check_member(user.id, context.bot):
 
         keyboard = InlineKeyboardMarkup(
             [
-
                 [
                     InlineKeyboardButton(
-                        "📢 عضویت در کانال",
+                        "📢 عضویت کانال",
                         url="https://t.me/Libercoin1"
                     )
                 ],
-
                 [
                     InlineKeyboardButton(
                         "✅ عضو شدم",
-                        callback_data="verify"
+                        callback_data="check"
                     )
                 ]
-
             ]
         )
 
 
         await update.message.reply_text(
-
 f"""
 🔒 سلام جناب {user.first_name}
 
-برای استفاده از Liber Coin
-ابتدا عضو کانال رسمی شوید.
+برای ورود به Liber Coin
+ابتدا عضو کانال شوید.
 
-بعد از عضویت روی دکمه
-«عضو شدم» بزنید.
+بعد از عضویت روی
+✅ عضو شدم
+بزنید.
 """,
-
             reply_markup=keyboard
         )
 
@@ -131,47 +91,35 @@ f"""
 
 
     await update.message.reply_text(
-
 f"""
 🔥 سلام جناب {user.first_name}
 
-به ربات Liber Coin خوش آمدید 🪙
+به Liber Coin خوش آمدید 🪙
 
 ✅ عضویت شما تایید شده است.
-
-🌍 آماده شروع هستید.
 """,
-
         reply_markup=MAIN_MENU
     )
 
 
 
-# =========================
 # دکمه عضو شدم
-# =========================
-
-async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def check_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     query = update.callback_query
 
     user = query.from_user
 
-
     await query.answer()
 
 
-    joined = await check_member(
+    if await check_member(
         user.id,
         context.bot
-    )
-
-
-    if joined:
+    ):
 
 
         await query.edit_message_text(
-
 f"""
 ✅ عضویت شما با موفقیت تایید شد
 
@@ -190,19 +138,14 @@ f"""
 
     else:
 
-
         await query.answer(
-
-            "❌ شما هنوز عضو نشده‌اید. ابتدا عضو کانال شوید.",
-
+            "❌ شما هنوز عضو نشده‌اید!",
             show_alert=True
         )
 
 
 
-# =========================
-# اجرای ربات
-# =========================
+# اجرا
 
 app = ApplicationBuilder().token(TOKEN).build()
 
@@ -217,13 +160,12 @@ app.add_handler(
 
 app.add_handler(
     CallbackQueryHandler(
-        verify,
-        pattern="verify"
+        check_button,
+        pattern="^check$"
     )
 )
 
 
-print("🔥 Liber Coin Started")
-
+print("Liber Coin Started ✅")
 
 app.run_polling()
