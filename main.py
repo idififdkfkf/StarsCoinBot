@@ -1,5 +1,20 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup
+)
+
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
+)
+
+from datetime import datetime
 
 
 TOKEN = "8818731091:AAHYaM4Wf9gZipqKJfXSwQhFx4qzKgnzFPQ"
@@ -9,16 +24,36 @@ ADMIN_ID = 6188951798
 CHANNEL = "@Libercoin1"
 
 
+# اطلاعات موقت کاربران
+users = {}
+
+
 # منوی اصلی
 MAIN_MENU = ReplyKeyboardMarkup(
     [
         ["👤 پروفایل", "💰 موجودی"],
         ["🪙 ارز LIBER", "💎 اشتراک"],
         ["🎮 بازی‌ها", "👥 زیرمجموعه"],
-        ["🛒 فروشگاه", "📞 پشتیبانی"]
+        ["🛒 فروشگاه", "🏛 مزایده"],
+        ["📞 پشتیبانی", "⚙️ تنظیمات"]
     ],
     resize_keyboard=True
 )
+
+
+
+def get_user(user):
+
+    if user.id not in users:
+        users[user.id] = {
+            "liber": 100,
+            "stars": 0,
+            "vip": "عادی",
+            "ref": 0,
+            "warn": 0
+        }
+
+    return users[user.id]
 
 
 
@@ -26,27 +61,27 @@ MAIN_MENU = ReplyKeyboardMarkup(
 async def check_member(user_id, bot):
 
     try:
+
         member = await bot.get_chat_member(
-            chat_id=CHANNEL,
-            user_id=user_id
+            CHANNEL,
+            user_id
         )
 
-        if member.status in [
+        return member.status in [
             "member",
             "administrator",
             "creator"
-        ]:
-            return True
-
-        return False
+        ]
 
     except Exception as e:
+
         print("CHECK ERROR:", e)
+
         return False
 
 
 
-# شروع
+# استارت
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
@@ -58,7 +93,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [
                 [
                     InlineKeyboardButton(
-                        "📢 عضویت کانال",
+                        "📢 عضویت در کانال",
                         url="https://t.me/Libercoin1"
                     )
                 ],
@@ -76,12 +111,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 f"""
 🔒 سلام جناب {user.first_name}
 
-برای ورود به Liber Coin
-ابتدا عضو کانال شوید.
+به Liber Coin خوش آمدید 🪙
 
-بعد از عضویت روی
-✅ عضو شدم
-بزنید.
+برای ورود ابتدا عضو کانال رسمی شوید.
+
+بعد از عضویت روی «عضو شدم» بزنید.
 """,
             reply_markup=keyboard
         )
@@ -94,16 +128,16 @@ f"""
 f"""
 🔥 سلام جناب {user.first_name}
 
-به Liber Coin خوش آمدید 🪙
+به ربات Liber Coin خوش آمدید 🪙
 
-✅ عضویت شما تایید شده است.
+✅ حساب شما فعال است.
 """,
         reply_markup=MAIN_MENU
     )
 
 
 
-# دکمه عضو شدم
+# تایید عضویت
 async def check_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     query = update.callback_query
@@ -113,11 +147,7 @@ async def check_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
 
-    if await check_member(
-        user.id,
-        context.bot
-    ):
-
+    if await check_member(user.id, context.bot):
 
         await query.edit_message_text(
 f"""
@@ -129,7 +159,6 @@ f"""
 """
         )
 
-
         await query.message.reply_text(
             "🪙 منوی Liber Coin",
             reply_markup=MAIN_MENU
@@ -139,13 +168,57 @@ f"""
     else:
 
         await query.answer(
-            "❌ شما هنوز عضو نشده‌اید!",
+            "❌ شما هنوز عضو کانال نشده‌اید.",
             show_alert=True
         )
 
 
 
-# اجرا
+# پروفایل
+async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user = update.effective_user
+
+    data = get_user(user)
+
+    now = datetime.now().strftime(
+        "%Y/%m/%d %H:%M"
+    )
+
+
+    await update.message.reply_text(
+f"""
+╭━━ 💎 Liber Coin ━━╮
+
+👤 نام:
+{user.first_name}
+
+🆔 آیدی عددی:
+{user.id}
+
+🪙 لیبر:
+{data['liber']}
+
+⭐ استارز:
+{data['stars']}
+
+💎 اشتراک:
+{data['vip']}
+
+👥 زیرمجموعه:
+{data['ref']}
+
+⚠️ اخطار:
+{data['warn']}
+
+🕒 زمان:
+{now}
+
+╰━━━━━━━━━━━━╯
+"""
+    )
+
+
 
 app = ApplicationBuilder().token(TOKEN).build()
 
@@ -161,11 +234,20 @@ app.add_handler(
 app.add_handler(
     CallbackQueryHandler(
         check_button,
-        pattern="^check$"
+        pattern="check"
     )
 )
 
 
-print("Liber Coin Started ✅")
+app.add_handler(
+    MessageHandler(
+        filters.Regex("^👤 پروفایل$"),
+        profile
+    )
+)
+
+
+print("🔥 Liber Coin Version 1 Started")
+
 
 app.run_polling()
