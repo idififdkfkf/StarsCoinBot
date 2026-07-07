@@ -17,7 +17,7 @@ from telegram.ext import (
 from datetime import datetime
 
 
-TOKEN = "توکن_ربات_خودت"
+TOKEN = "8818731091:AAHYaM4Wf9gZipqKJfXSwQhFx4qzKgnzFPQ"
 
 CHANNEL = "@Libercoin1"
 
