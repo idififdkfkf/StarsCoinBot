@@ -9,33 +9,35 @@ from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     CallbackQueryHandler,
-    MessageHandler,
-    ContextTypes,
-    filters
+    ContextTypes
 )
 
-from datetime import datetime
 
+# =========================
+# تنظیمات Liber Coin
+# =========================
 
 TOKEN = "8818731091:AAHYaM4Wf9gZipqKJfXSwQhFx4qzKgnzFPQ"
 
-CHANNEL = "@Libercoin1"
-
 ADMIN_ID = 6188951798
 
+CHANNEL = "@Libercoin1"
+
+
 
 # =========================
-# منوی اصلی Liber Coin
+# منوی اصلی
 # =========================
 
-main_menu = ReplyKeyboardMarkup(
+MAIN_MENU = ReplyKeyboardMarkup(
     [
-        ["👤 پروفایل", "💰 کیف پول"],
+        ["👤 پروفایل", "💰 موجودی"],
         ["🪙 ارز LIBER", "💎 اشتراک"],
-        ["🎮 بازی‌ها", "🏆 رنک"],
+        ["🎮 بازی‌ها", "🏆 رتبه‌بندی"],
         ["🎁 هدیه روزانه", "👥 زیرمجموعه"],
         ["🛒 فروشگاه", "🏛 مزایده"],
-        ["📞 پشتیبانی", "⚙️ تنظیمات"]
+        ["💸 برداشت", "📞 پشتیبانی"],
+        ["⚙️ تنظیمات"]
     ],
     resize_keyboard=True
 )
@@ -46,27 +48,32 @@ main_menu = ReplyKeyboardMarkup(
 # بررسی عضویت
 # =========================
 
-async def check_join(user_id, bot):
+async def check_member(user_id, bot):
 
     try:
+
         member = await bot.get_chat_member(
             CHANNEL,
             user_id
         )
 
-        return member.status in [
+        if member.status in [
             "member",
             "administrator",
             "creator"
-        ]
+        ]:
+            return True
+
+        return False
 
     except:
+
         return False
 
 
 
 # =========================
-# شروع ربات
+# دستور شروع
 # =========================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -74,13 +81,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
 
 
-    if not await check_join(
+    joined = await check_member(
         user.id,
         context.bot
-    ):
+    )
+
+
+    if not joined:
+
 
         keyboard = InlineKeyboardMarkup(
             [
+
                 [
                     InlineKeyboardButton(
                         "📢 عضویت در کانال",
@@ -91,21 +103,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [
                     InlineKeyboardButton(
                         "✅ عضو شدم",
-                        callback_data="check_join"
+                        callback_data="verify"
                     )
                 ]
+
             ]
         )
 
 
         await update.message.reply_text(
-            """
-🔒 برای ورود به Liber Coin
 
+f"""
+🔒 سلام جناب {user.first_name}
+
+برای استفاده از Liber Coin
 ابتدا عضو کانال رسمی شوید.
 
-بعد روی «عضو شدم» بزنید.
-            """,
+بعد از عضویت روی دکمه
+«عضو شدم» بزنید.
+""",
+
             reply_markup=keyboard
         )
 
@@ -116,22 +133,75 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
 
 f"""
-🔥 سلام {user.first_name}
+🔥 سلام جناب {user.first_name}
 
-به ربات رسمی Liber Coin خوش آمدید 🪙
+به ربات Liber Coin خوش آمدید 🪙
 
-🌟 دنیای بازی، ارز، رقابت و جایزه
+✅ عضویت شما تایید شده است.
 
-از منوی زیر انتخاب کنید 👇
+🌍 آماده شروع هستید.
 """,
 
-        reply_markup=main_menu
+        reply_markup=MAIN_MENU
     )
 
 
 
 # =========================
-# اجرا
+# دکمه عضو شدم
+# =========================
+
+async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+
+    user = query.from_user
+
+
+    await query.answer()
+
+
+    joined = await check_member(
+        user.id,
+        context.bot
+    )
+
+
+    if joined:
+
+
+        await query.edit_message_text(
+
+f"""
+✅ عضویت شما با موفقیت تایید شد
+
+🔥 خوش آمدید جناب {user.first_name}
+
+حساب شما فعال شد.
+"""
+        )
+
+
+        await query.message.reply_text(
+            "🪙 منوی Liber Coin",
+            reply_markup=MAIN_MENU
+        )
+
+
+    else:
+
+
+        await query.answer(
+
+            "❌ شما هنوز عضو نشده‌اید. ابتدا عضو کانال شوید.",
+
+            show_alert=True
+        )
+
+
+
+# =========================
+# اجرای ربات
 # =========================
 
 app = ApplicationBuilder().token(TOKEN).build()
@@ -145,7 +215,15 @@ app.add_handler(
 )
 
 
-print("Liber Coin Started...")
+app.add_handler(
+    CallbackQueryHandler(
+        verify,
+        pattern="verify"
+    )
+)
+
+
+print("🔥 Liber Coin Started")
 
 
 app.run_polling()
