@@ -1,4 +1,4 @@
-from telegram import (from datetime import timedelta
+from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -25,6 +25,7 @@ ADMIN_ID = 6188951798
 
 
 users = {}
+
 
 
 MAIN_MENU = ReplyKeyboardMarkup(
@@ -115,7 +116,7 @@ f"""
 
 به ربات Liber Coin خوش آمدید 🪙
 
-برای شروع عضو کانال شوید.
+برای شروع ابتدا عضو کانال شوید.
 """,
 
 reply_markup=keyboard
@@ -216,7 +217,7 @@ f"""
 💎 اشتراک:
 {data['vip']}
 
-🕒 زمان:
+🕒 ساعت:
 {datetime.now().strftime("%H:%M:%S")}
 
 ╰━━━━━━━━━━━━╯
@@ -246,9 +247,9 @@ f"""
 
 async def stats(update, context):
 
-    user = update.effective_user
-
-    data = get_user(user)
+    data = get_user(
+        update.effective_user
+    )
 
 
     await update.message.reply_text(
@@ -278,17 +279,19 @@ async def referral(update, context):
 
     bot = await context.bot.get_me()
 
+
     link = f"https://t.me/{bot.username}?start={user.id}"
 
 
     await update.message.reply_text(
 
 f"""
-👥 سیستم زیرمجموعه
+👥 زیرمجموعه Liber Coin
 
-لینک شما:
+لینک دعوت شما:
 
 {link}
+
 
 تعداد دعوت:
 {data['ref']}
@@ -349,221 +352,8 @@ app.add_handler(
 )
 
 
+
 print("🔥 Liber Coin V1 Started")
 
-# =========================
-# Liber Coin V2
-# VIP System
-# =========================
 
-
-VIP_PLANS = {
-
-    "p3": {
-        "name": "💎 Premium",
-        "month": 3,
-        "price": 70
-    },
-
-    "p6": {
-        "name": "💎 Premium",
-        "month": 6,
-        "price": 130
-    },
-
-    "p12": {
-        "name": "💎 Premium",
-        "month": 12,
-        "price": 160
-    },
-
-
-    "l3": {
-        "name": "👑 Liber Premium",
-        "month": 3,
-        "price": 150
-    },
-
-    "l6": {
-        "name": "👑 Liber Premium",
-        "month": 6,
-        "price": 200
-    },
-
-    "l12": {
-        "name": "👑 Liber Premium",
-        "month": 12,
-        "price": 250
-    }
-
-}
-
-
-
-async def vip_menu(update, context):
-
-    keyboard = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(
-                    "💎 Premium",
-                    callback_data="premium"
-                )
-            ],
-
-            [
-                InlineKeyboardButton(
-                    "👑 Liber Premium",
-                    callback_data="liber"
-                )
-            ]
-        ]
-    )
-
-
-    await update.message.reply_text(
-
-"""
-💎 خرید اشتراک Liber Coin
-
-نوع اشتراک را انتخاب کنید:
-""",
-
-reply_markup=keyboard
-
-    )
-
-
-
-async def vip_select(update, context):
-
-    query = update.callback_query
-
-    await query.answer()
-
-
-    if query.data == "premium":
-
-        buttons = [
-
-            ("3 ماه ⭐70", "p3"),
-
-            ("6 ماه ⭐130", "p6"),
-
-            ("12 ماه ⭐160", "p12")
-
-        ]
-
-    else:
-
-        buttons = [
-
-            ("3 ماه ⭐150", "l3"),
-
-            ("6 ماه ⭐200", "l6"),
-
-            ("12 ماه ⭐250", "l12")
-
-        ]
-
-
-
-    keyboard = InlineKeyboardMarkup(
-
-        [
-
-            [
-
-                InlineKeyboardButton(
-                    text,
-                    callback_data=data
-                )
-
-            ]
-
-            for text,data in buttons
-
-        ]
-
-    )
-
-
-    await query.edit_message_text(
-
-        "⏳ مدت اشتراک را انتخاب کنید:",
-
-        reply_markup=keyboard
-
-    )
-
-
-
-
-async def buy_vip(update, context):
-
-    query = update.callback_query
-
-    user = query.from_user
-
-
-    data = get_user(user)
-
-
-    plan = VIP_PLANS.get(
-        query.data
-    )
-
-
-    if not plan:
-        return
-
-
-
-    end = datetime.now() + timedelta(
-
-        days=plan["month"] * 30
-
-    )
-
-
-
-    data["vip"] = plan["name"]
-
-    data["vip_end"] = end.strftime(
-        "%Y/%m/%d"
-    )
-
-
-
-    await query.answer()
-
-
-
-    await query.edit_message_text(
-
-f"""
-🎉 تبریک {user.first_name}
-
-اشتراک شما فعال شد ✅
-
-
-💎 نوع:
-{plan['name']}
-
-
-⏳ مدت:
-{plan['month']} ماه
-
-
-⭐ هزینه:
-{plan['price']} Stars
-
-
-📅 پایان:
-{data['vip_end']}
-
-
-🚀 از امکانات ویژه Liber Coin لذت ببرید
-"""
-    )
 app.run_polling()
