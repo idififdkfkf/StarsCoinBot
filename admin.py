@@ -44,8 +44,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👑 پنل مدیریت Liber Coin\n\nفقط برای مدیر اصلی فعال است.",
         reply_markup=keyboard
-    )
-  # =========================
+    )# =========================
 # بخش مدیریت کاربران
 # =========================
 
@@ -186,9 +185,88 @@ async def withdraw_manager(update, context):
         ],
 
         [
-            InlineKeyboardButton(
-                "❌ رد برداشت",
-              # =========================
+            InlineKeyboardButton(
+                "❌ رد برداشت",
+    # =========================
+# بخش مدیریت کاربران
+# =========================
+
+users_db = {}
+
+
+async def admin_users_menu(update, context):
+
+    query = update.callback_query
+    await query.answer()
+
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "🔎 جستجوی کاربر",
+                callback_data="search_user"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "➕ افزودن LIBER",
+                callback_data="add_liber"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "➖ کم کردن LIBER",
+                callback_data="remove_liber"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "⭐ مدیریت استارز",
+                callback_data="manage_stars"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔙 برگشت",
+                callback_data="back_admin"
+            )
+        ]
+    ])
+
+    await query.edit_message_text(
+        """
+👥 مدیریت کاربران
+
+یک گزینه را انتخاب کنید:
+""",
+        reply_markup=keyboard
+    )
+
+
+
+# =========================
+# مدیریت LIBER
+# =========================
+
+
+async def liber_manager(update, context):
+
+    query = update.callback_query
+
+    await query.answer()
+
+
+    keyboard = InlineKeyboardMarkup([
+
+        [
+            InlineKeyboardButton(
+                "📈 قیمت LIBER",
+                callback_data="liber_price"
+            )
+        ],
+
+        [
+            Inline
+    # =========================
 # فروشگاه مدیریت
 # =========================
 
@@ -345,4 +423,4 @@ async def game_manager(update, context):
         [
             InlineKeyboardButton(
                 "🔙 برگ
-  
+    
