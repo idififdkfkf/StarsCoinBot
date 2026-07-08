@@ -2,559 +2,333 @@ from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    filters
+    ContextTypes
 )
-
 import json
 import os
 
-
 TOKEN = "8818731091:AAHYaM4Wf9gZipqKJfXSwQhFx4qzKgnzFPQ"
-
 CHANNEL = "@Libercoin1"
-
 ADMIN_ID = 6188951798
-
 FILE = "users.json"
-
-
-
-# --------------------
-# DATABASE
-# --------------------
 
 users = {}
 
-
-def load_users():
-
-    global users
-
-    if os.path.exists(FILE):
-
-        with open(FILE, "r", encoding="utf-8") as f:
-            users = json.load(f)
-
-
+if os.path.exists(FILE):
+    with open(FILE, "r", encoding="utf-8") as f:
+        users = json.load(f)
 
 def save_users():
-
     with open(FILE, "w", encoding="utf-8") as f:
-        json.dump(
-            users,
-            f,
-            ensure_ascii=False,
-            indent=4
-        )
-
-
-load_users()
-
-
-
-# --------------------
-# USER
-# --------------------
+        json.dump(users, f, ensure_ascii=False, indent=4)
 
 def create_user(user):
-
     uid = str(user.id)
 
     if uid not in users:
-
         users[uid] = {
-
             "id": user.id,
-
             "name": user.first_name,
-
             "liber": 100,
-
+            "liber_token": 0,
             "level": 1,
-
-            "xp": 0,
-
-            "vip": "Normal"
-
+            "xp": 0
         }
-
         save_users()
-
 
     return users[uid]
 
-
-
-# --------------------
-# MENU
-# --------------------
-
 menu = ReplyKeyboardMarkup(
-
     [
-        ["👤 پروفایل", "💰 موجودی"],
-
         ["🪙 بازار LIBER", "🏷 مزایده"],
-
         ["⚔️ رقابت", "💎 اشتراک"]
-
     ],
-
     resize_keyboard=True
-
 )
 
-
-
-# --------------------
-# CHANNEL CHECK
-# --------------------
-
-async def check_member(user_id, bot):
-
+async def check_member(bot, user_id):
     try:
-
-        member = await bot.get_chat_member(
-            CHANNEL,
-            user_id
-        )
-
+        member = await bot.get_chat_member(CHANNEL, user_id)
         return member.status in [
-
             "member",
             "administrator",
             "creator"
-
         ]
-
     except:
-
         return False
-
-
-
-# --------------------
-# START
-# --------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    user = update.effective_user
-
-
     if not await check_member(
-        user.id,
-        context.bot
+        context.bot,
+        update.effective_user.id
     ):
-
         await update.message.reply_text(
-
-            "📢 اول عضو کانال شو:\n"
-            + CHANNEL
-
+            f"اول عضو کانال شو:\n{CHANNEL}"
         )
-
         return
 
-
-
-    create_user(user)
-
+    data = create_user(update.effective_user)
 
     await update.message.reply_text(
+f"""🔥 به Liber خوش آمدی
 
-        "🔥 خوش آمدی به Liber Universe\n\n"
-        "💰 جایزه شروع: 100 LIBER",
+💰 موجودی:
+{data['liber']} LIBER
 
+🪙 توکن:
+{data['liber_token']}
+
+از دکمه‌های پایین استفاده کن.""",
         reply_markup=menu
-
     )
-
-
-
-# --------------------
-# PROFILE
-# --------------------
-
-async def profile(update, context):
-
-    data = create_user(
-        update.effective_user
-    )
-
-
-    await update.message.reply_text(
-
-f"""
-👤 پروفایل
-
-نام:
-{data['name']}
-
-💰 LIBER:
-{data['liber']}
-
-⭐ Level:
-{data['level']}
-
-✨ XP:
-{data['xp']}
-
-💎 VIP:
-{data['vip']}
-"""
-
-    )
-
-
-
-# --------------------
-# BALANCE
-# --------------------
-
-async def balance(update, context):
-
-    data = create_user(
-        update.effective_user
-    )
-
-
-    await update.message.reply_text(
-
-        f"💰 موجودی شما: {data['liber']} LIBER"
-
-    )
-
-
-
-# --------------------
-# ADMIN TEST
-# --------------------
-
-async def admin(update, context):
-
-    if update.effective_user.id == ADMIN_ID:
-
-        await update.message.reply_text(
-            "👑 ادمین فعال است"
-        )
-
-    else:
-
-        await update.message.reply_text(
-            "⛔ دسترسی ندارید"
-        )
-
-
-
-# --------------------
-# BOT
-# --------------------
 
 app = ApplicationBuilder().token(TOKEN).build()
+app.add_handler(CommandHandler("start", start))
 
-
-app.add_handler(
-    CommandHandler(
-        "start",
-        start
-    )
-)
-
-
-app.add_handler(
-    MessageHandler(
-        filters.Regex("^👤 پروفایل$"),
-        profile
-    )
-)
-
-
-app.add_handler(
-    MessageHandler(
-        filters.Regex("^💰 موجودی$"),
-        balance
-    )
-)
-
-
-app.add_handler(
-    CommandHandler(
-        "admin",
-        admin
-    )
-)
-
-
-print("LIBER V1 STARTED")
-
-# =====================
-# VERSION 2 ADDON
-# MARKET + AUCTION
-# =====================
+# ==========================
+# VERSION 2 (ADDON)
+# این قسمت را بعد از نسخه ۱
+# و قبل از app.run_polling() قرار بده
+# ==========================
 
 import random
 from datetime import datetime, timedelta
 
+# -------- بازار LIBER --------
 
-
-# =====================
-# MARKET
-# =====================
-
-LIBER_MARKET = {
-
+MARKET = {
     "price": 100,
-
-    "last_change": datetime.now()
-
+    "last_update": datetime.now()
 }
 
-
-
 def update_market():
+    if datetime.now() - MARKET["last_update"] >= timedelta(hours=1):
 
-    now = datetime.now()
+        MARKET["price"] += random.randint(-10, 15)
 
+        if MARKET["price"] < 10:
+            MARKET["price"] = 10
 
-    if now - LIBER_MARKET["last_change"] >= timedelta(hours=1):
-
-        change = random.randint(-15, 20)
-
-        LIBER_MARKET["price"] += change
-
-
-        if LIBER_MARKET["price"] < 10:
-
-            LIBER_MARKET["price"] = 10
+        MARKET["last_update"] = datetime.now()
 
 
-        LIBER_MARKET["last_change"] = now
-
-
-
-
-async def liber_market(update, context):
+async def liber_market(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     update_market()
 
-
     await update.message.reply_text(
-
-f"""
-🪙 بازار LIBER
+f"""🪙 بازار LIBER
 
 💰 قیمت فعلی:
+{MARKET['price']}
 
-1 LIBER = {LIBER_MARKET['price']}
+📈 قیمت هر یک ساعت تغییر می‌کند.
 
-
-📈 نوسان:
-هر ۱ ساعت تغییر می‌کند
-
-🛒 برای خرید:
-دکمه خرید LIBER
+🏷 برای شرکت در مزایده روی دکمه «🏷 مزایده» بزن.
 """
-
     )
 
 
-
-
-
-async def buy_liber(update, context):
-
-    data = create_user(
-        update.effective_user
-    )
-
-
-    amount = 1
-
-
-    data["liber"] += amount
-
-
-    save_users()
-
-
-    await update.message.reply_text(
-
-f"""
-✅ خرید موفق
-
-🪙 دریافت:
-{amount} LIBER
-
-💰 قیمت:
-{LIBER_MARKET['price']}
-"""
-
-    )
-
-
-
-
-# =====================
-# AUCTION
-# =====================
-
+# -------- مزایده --------
 
 AUCTION = {
-
     "item": "🎁 جعبه طلایی",
-
-    "price": 50,
-
-    "owner": None
-
+    "price": 50
 }
 
-
-
-
-
-async def auction_menu(update, context):
-
+async def auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
+f"""🏷 مزایده LIBER
 
-f"""
-🏷 مزایده LIBER
-
-
-آیتم:
+🎁 آیتم:
 {AUCTION['item']}
 
-
-💰 قیمت فعلی:
+💰 قیمت شروع:
 {AUCTION['price']} LIBER
 
-
 برای شرکت:
-نوشتن:
-
-شرکت مزایده
+دکمه «شرکت مزایده» را بزن.
 """
-
     )
 
 
+async def join_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
+    data = create_user(update.effective_user)
 
-
-async def join_auction(update, context):
-
-    data = create_user(
-        update.effective_user
-    )
-
-
-    cost = AUCTION["price"]
-
-
-
-    if data["liber"] < cost:
-
+    if data["liber"] < AUCTION["price"]:
 
         await update.message.reply_text(
-
-            "❌ LIBER کافی نیست"
-
+            "❌ موجودی LIBER کافی نیست."
         )
-
         return
 
-
-
-    data["liber"] -= cost
-
-
-    AUCTION["owner"] = data["name"]
-
+    data["liber"] -= AUCTION["price"]
+    save_users()
 
     AUCTION["price"] += 10
 
+    await update.message.reply_text(
+f"""✅ در مزایده شرکت کردی.
+
+💰 قیمت جدید:
+{AUCTION['price']} LIBER
+"""
+    )
+
+
+# -------- Handler ها --------
+
+app.add_handler(
+    MessageHandler(
+        filters.Regex("^🪙 بازار LIBER$"),
+        liber_market
+    )
+)
+
+app.add_handler(
+    MessageHandler(
+        filters.Regex("^🏷 مزایده$"),
+        auction
+    )
+)
+
+app.add_handler(
+    MessageHandler(
+        filters.Regex("^شرکت مزایده$"),
+        join_auction
+    )
+)# ==========================
+# VERSION 3 (ADDON)
+# بعد از نسخه ۲ و قبل از app.run_polling()
+# ==========================
+
+# ---------- جایزه روزانه ----------
+
+from datetime import datetime
+
+async def daily_reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    data = create_user(update.effective_user)
+
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    if data.get("daily_reward") == today:
+        await update.message.reply_text(
+            "🎁 جایزه امروزت را قبلاً دریافت کرده‌ای."
+        )
+        return
+
+    reward = 20
+
+    data["daily_reward"] = today
+    data["liber"] += reward
 
     save_users()
 
+    await update.message.reply_text(
+f"""🎉 جایزه روزانه دریافت شد
 
+💰 +{reward} LIBER
+"""
+    )
+
+
+# ---------- مأموریت روزانه ----------
+
+async def daily_mission(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
+"""📋 مأموریت امروز
 
+✅ ورود به ربات
+🎁 جایزه: 10 LIBER
+
+✅ شرکت در مزایده
+🎁 جایزه: 20 LIBER
+
+✅ دعوت یک زیرمجموعه
+🎁 جایزه: 50 LIBER
 """
-✅ پیشنهاد شما ثبت شد
+    )
 
-🏷 مزایده ادامه دارد
 
-قیمت جدید افزایش یافت
+# ---------- هندلرها ----------
+
+app.add_handler(
+    MessageHandler(
+        filters.Regex("^🎁 جایزه روزانه$"),
+        daily_reward
+    )
+)
+
+app.add_handler(
+    MessageHandler(
+        filters.Regex("^📋 مأموریت روزانه$"),
+        daily_mission
+    )
+)# ==========================
+# VERSION 4 (ADDON)
+# REFERRAL SYSTEM
+# بعد از نسخه ۳ و قبل از app.run_polling()
+# ==========================
+
+async def referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user = create_user(update.effective_user)
+
+    bot = await context.bot.get_me()
+
+    invite_link = (
+        f"https://t.me/{bot.username}"
+        f"?start={user['id']}"
+    )
+
+    text = f"""
+👥 سیستم زیرمجموعه LIBER
+
+دوستانت را دعوت کن و جایزه بگیر!
+
+🎁 پاداش هر دعوت موفق:
+50 LIBER
+
+💎 اگر زیرمجموعه‌هایت فعال باشند،
+هر روز پاداش بیشتری دریافت می‌کنی.
+
+━━━━━━━━━━━━━━
+
+🔗 لینک دعوت اختصاصی تو:
+
+{invite_link}
+
+━━━━━━━━━━━━━━
+
+🚀 چرا همه وارد LIBER می‌شوند؟
+
+🎮 بازی‌های جذاب
+🏆 رقابت آنلاین
+🪙 کسب LIBER
+🎁 جوایز روزانه
+💎 اشتراک ویژه
+👥 درآمد از دعوت دوستان
+
+🔥 همین حالا لینکت را برای دوستانت بفرست.
 """
 
-    )
+    await update.message.reply_text(text)
 
 
-
-
-
-# =====================
-# HANDLERS
-# =====================
-
+# ------------------
+# HANDLER
+# ------------------
 
 app.add_handler(
-
     MessageHandler(
-
-        filters.Regex("^🪙 بازار LIBER$"),
-
-        liber_market
-
+        filters.Regex("^👥 زیرمجموعه$"),
+        referral
     )
-
-)
-
-
-
-app.add_handler(
-
-    MessageHandler(
-
-        filters.Regex("^🛒 خرید LIBER$"),
-
-        buy_liber
-
-    )
-
-)
-
-
-
-app.add_handler(
-
-    MessageHandler(
-
-        filters.Regex("^🏷 مزایده$"),
-
-        auction_menu
-
-    )
-
-)
-
-
-
-app.add_handler(
-
-    MessageHandler(
-
-        filters.Regex("^شرکت مزایده$"),
-
-        join_auction
-
-    )
-
 )
 
 
