@@ -15,7 +15,9 @@ from telegram.ext import (
     Application,
     CommandHandler,
     CallbackQueryHandler,
+    MessageHandler,
     ContextTypes,
+    filters,
 )
 
 logging.basicConfig(
@@ -32,8 +34,9 @@ BOT_TOKEN = "8818731091:AAHD4vNWYdFfDD6C0__60vsd4hCDumRuB-Y"
 ADMIN_IDS = [123456789]
 
 FORCE_JOIN_CHANNELS = [
-    {"id": "@your_channel_1", "title": "کانال اول", "url": "https://t.me/your_channel_1"},
-    {"id": "@your_channel_2", "title": "کانال دوم", "url": "https://t.me/your_channel_2"},
+    {"id": "@Libercoin1", "title": "کانال LIBER", "url": "https://t.me/Libercoin1"},
+    # کانال یا گروه دیگری داری، همینجا یک آیتم دیگر اضافه کن:
+    # {"id": "@your_channel_2", "title": "کانال دوم", "url": "https://t.me/your_channel_2"},
 ]
 
 DB_PATH = "liber.db"
@@ -81,6 +84,94 @@ SPAM_COOLDOWN_SECONDS = 1.0
 _last_action_time = {}
 _warn_count = {}
 
+# ------------------------------------------------------------
+#  فروشگاه
+# ------------------------------------------------------------
+SHOP_ITEMS = {
+    "energy_50":   {"title": "⚡ ۵۰ انرژی",        "cost": {"coin": 200},    "give": ("energy", 50)},
+    "energy_200":  {"title": "⚡ ۲۰۰ انرژی",       "cost": {"coin": 700},    "give": ("energy", 200)},
+    "diamond_10":  {"title": "💎 ۱۰ الماس",        "cost": {"liber": 150},   "give": ("diamond", 10)},
+    "diamond_50":  {"title": "💎 ۵۰ الماس",        "cost": {"liber": 650},   "give": ("diamond", 50)},
+    "frame_gold":  {"title": "🖼 قاب طلایی",       "cost": {"diamond": 30},  "give": ("frame", "gold")},
+    "frame_neon":  {"title": "🖼 قاب نئونی",        "cost": {"diamond": 60},  "give": ("frame", "neon")},
+}
+
+# ------------------------------------------------------------
+#  دستاوردها
+# ------------------------------------------------------------
+ACHIEVEMENTS = {
+    "first_trade":     {"title": "🥇 اولین معامله",      "desc": "اولین خرید یا فروش در بازار", "reward_liber": 20},
+    "trader_100":      {"title": "📈 معامله‌گر",          "desc": "۱۰۰ بار در بازار معامله کن",   "reward_liber": 200},
+    "chest_opener":    {"title": "🎁 صندوق‌باز",          "desc": "۵۰ صندوق باز کن",             "reward_diamond": 20},
+    "country_founder": {"title": "🏛 بنیان‌گذار",         "desc": "یک کشور بساز",                "reward_coin": 300},
+    "level_10":        {"title": "⭐ سطح ۱۰",             "desc": "به سطح ۱۰ برس",               "reward_diamond": 30},
+    "level_25":        {"title": "🌟 سطح ۲۵",             "desc": "به سطح ۲۵ برس",               "reward_diamond": 100},
+    "referral_10":     {"title": "👥 جذب‌کننده",          "desc": "۱۰ نفر دعوت کن",              "reward_liber": 300},
+    "alliance_join":   {"title": "🤝 هم‌پیمان",           "desc": "به یک اتحاد بپیوند",          "reward_coin": 200},
+    "vip_member":      {"title": "👑 عضو VIP",            "desc": "هر سطحی از VIP را بخر",       "reward_medal": 5},
+    "bank_saver":      {"title": "🏦 پس‌انداز کن",        "desc": "۱۰۰۰ Coin سپرده بگذار",       "reward_coin": 150},
+}
+
+# ------------------------------------------------------------
+#  تحقیقات / فناوری
+# ------------------------------------------------------------
+RESEARCH_TREE = [
+    {"level": 1, "name": "کشاورزی مدرن", "cost_coin": 300,  "effect": "production +10%"},
+    {"level": 2, "name": "معدن‌کاری پیشرفته", "cost_coin": 700,  "effect": "production +20%"},
+    {"level": 3, "name": "انرژی خورشیدی", "cost_coin": 1500, "effect": "production +35%"},
+    {"level": 4, "name": "هوش مصنوعی صنعتی", "cost_coin": 3000, "effect": "production +50%"},
+    {"level": 5, "name": "فناوری کوانتومی", "cost_coin": 6000, "effect": "production +75%"},
+]
+
+# ------------------------------------------------------------
+#  دفاع نظامی
+# ------------------------------------------------------------
+DEFENSE_UPGRADE_BASE_COST = 250
+DEFENSE_UPGRADE_GROWTH = 1.6
+
+# ------------------------------------------------------------
+#  اکتشاف
+# ------------------------------------------------------------
+EXPLORATION_MIN_LEVEL = 5
+EXPLORATION_ENERGY_COST = 20
+EXPLORATION_REWARDS = [
+    ("coin", 50, 300),
+    ("liber", 5, 40),
+    ("diamond", 0, 3),
+]
+
+# ------------------------------------------------------------
+#  بازار سیاه (روزانه تغییر می‌کند)
+# ------------------------------------------------------------
+BLACK_MARKET_POOL = [
+    {"title": "👑 آیتم افسانه‌ای کمیاب", "cost": {"diamond": 80}, "give": ("medal", 10)},
+    {"title": "💎 پیشنهاد ویژه الماس",   "cost": {"liber": 500}, "give": ("diamond", 40)},
+    {"title": "🎁 جعبه رمز و راز",        "cost": {"coin": 1000}, "give": ("liber", 60)},
+    {"title": "🏅 مدال کمیاب",           "cost": {"diamond": 40}, "give": ("medal", 5)},
+]
+
+# ------------------------------------------------------------
+#  فصل بازی
+# ------------------------------------------------------------
+SEASON_LENGTH_DAYS = 90
+
+# ------------------------------------------------------------
+#  معامله مستقیم بین بازیکنان
+# ------------------------------------------------------------
+TRADE_FEE_PERCENT = 3
+
+# ------------------------------------------------------------
+#  بازار پیش‌بینی قیمت
+# ------------------------------------------------------------
+PREDICTION_BET_AMOUNT = 50
+PREDICTION_WIN_MULTIPLIER = 1.8
+
+# ------------------------------------------------------------
+#  فیلتر فحش (نمونه ساده - قابل گسترش)
+# ------------------------------------------------------------
+BANNED_WORDS = ["kosekhar", "fuckyou"]
+MAX_WARN_BEFORE_BAN = 5
+
 
 # ============================================================
 #  دیتابیس
@@ -123,7 +214,13 @@ def init_db():
             last_daily_mission TEXT DEFAULT '',
             last_daily_reward TEXT DEFAULT '',
             banned INTEGER DEFAULT 0,
-            warn_count INTEGER DEFAULT 0
+            warn_count INTEGER DEFAULT 0,
+            frame TEXT DEFAULT 'normal',
+            trade_count INTEGER DEFAULT 0,
+            chest_count INTEGER DEFAULT 0,
+            research_level INTEGER DEFAULT 0,
+            defense_level INTEGER DEFAULT 0,
+            achievements TEXT DEFAULT '[]'
         )
         """
     )
@@ -145,9 +242,60 @@ def init_db():
         )
         """
     )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS trades (
+            trade_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            seller_id INTEGER,
+            item_field TEXT,
+            item_amount REAL,
+            price_coin REAL,
+            status TEXT DEFAULT 'open',
+            buyer_id INTEGER DEFAULT 0,
+            created_at TEXT
+        )
+        """
+    )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS predictions (
+            pred_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            direction TEXT,
+            start_price REAL,
+            bet_amount REAL,
+            status TEXT DEFAULT 'open',
+            created_at TEXT
+        )
+        """
+    )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS season (
+            id INTEGER PRIMARY KEY,
+            season_number INTEGER,
+            started_at TEXT
+        )
+        """
+    )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS black_market_stock (
+            id INTEGER PRIMARY KEY,
+            item_index INTEGER,
+            day TEXT
+        )
+        """
+    )
     c.execute("SELECT COUNT(*) as cnt FROM market")
     if c.fetchone()["cnt"] == 0:
         c.execute("INSERT INTO market (id, price) VALUES (1, ?)", (MARKET_BASE_PRICE,))
+    c.execute("SELECT COUNT(*) as cnt FROM season")
+    if c.fetchone()["cnt"] == 0:
+        c.execute(
+            "INSERT INTO season (id, season_number, started_at) VALUES (1, 1, ?)",
+            (datetime.now().strftime("%Y-%m-%d"),),
+        )
     conn.commit()
     conn.close()
 
@@ -269,6 +417,295 @@ def anti_spam_check(user_id):
 
 
 # ============================================================
+#  دستاوردها
+# ============================================================
+
+def get_achievements(user_id):
+    u = get_user(user_id)
+    try:
+        return json.loads(u["achievements"])
+    except Exception:
+        return []
+
+
+def unlock_achievement(user_id, key):
+    unlocked = get_achievements(user_id)
+    if key in unlocked:
+        return False
+    unlocked.append(key)
+    set_field(user_id, "achievements", json.dumps(unlocked))
+    ach = ACHIEVEMENTS[key]
+    if "reward_liber" in ach:
+        add_currency(user_id, "liber", ach["reward_liber"])
+    if "reward_coin" in ach:
+        add_currency(user_id, "coin", ach["reward_coin"])
+    if "reward_diamond" in ach:
+        add_currency(user_id, "diamond", ach["reward_diamond"])
+    if "reward_medal" in ach:
+        add_currency(user_id, "medal", ach["reward_medal"])
+    return True
+
+
+def check_achievements(user_id):
+    """بررسی و باز کردن خودکار دستاوردهایی که شرایطشان برآورده شده. خروجی: لیست عنوان‌های تازه باز شده."""
+    u = get_user(user_id)
+    newly_unlocked = []
+
+    checks = {
+        "first_trade": u["trade_count"] >= 1,
+        "trader_100": u["trade_count"] >= 100,
+        "chest_opener": u["chest_count"] >= 50,
+        "country_founder": bool(u["country_name"]),
+        "level_10": u["level"] >= 10,
+        "level_25": u["level"] >= 25,
+        "referral_10": u["ref_count"] >= 10,
+        "alliance_join": u["alliance_id"] != 0,
+        "vip_member": u["vip"] != "none",
+        "bank_saver": u["bank_deposit"] >= 1000,
+    }
+    for key, condition in checks.items():
+        if condition and unlock_achievement(user_id, key):
+            newly_unlocked.append(ACHIEVEMENTS[key]["title"])
+    return newly_unlocked
+
+
+# ============================================================
+#  تحقیقات / فناوری
+# ============================================================
+
+def get_research_info(user_id):
+    u = get_user(user_id)
+    level = u["research_level"]
+    if level >= len(RESEARCH_TREE):
+        return None
+    return RESEARCH_TREE[level]
+
+
+def upgrade_research(user_id):
+    u = get_user(user_id)
+    info = get_research_info(user_id)
+    if not info:
+        return False, "🔬 تمام سطوح تحقیقاتی را کامل کرده‌ای."
+    if u["coin"] < info["cost_coin"]:
+        return False, "❌ Coin کافی نداری."
+    add_currency(user_id, "coin", -info["cost_coin"])
+    set_field(user_id, "research_level", u["research_level"] + 1)
+    return True, f"🔬 تحقیق «{info['name']}» تکمیل شد! ({info['effect']})"
+
+
+# ============================================================
+#  دفاع نظامی
+# ============================================================
+
+def get_defense_upgrade_cost(current_level):
+    return round(DEFENSE_UPGRADE_BASE_COST * (DEFENSE_UPGRADE_GROWTH ** current_level), 2)
+
+
+def upgrade_defense(user_id):
+    u = get_user(user_id)
+    cost = get_defense_upgrade_cost(u["defense_level"])
+    if u["coin"] < cost:
+        return False, f"❌ برای ارتقا به {cost} Coin نیاز داری."
+    add_currency(user_id, "coin", -cost)
+    set_field(user_id, "defense_level", u["defense_level"] + 1)
+    return True, f"🛡 دفاع کشورت به سطح {u['defense_level']+1} ارتقا یافت."
+
+
+# ============================================================
+#  اکتشاف
+# ============================================================
+
+def do_exploration(user_id):
+    u = get_user(user_id)
+    if u["level"] < EXPLORATION_MIN_LEVEL:
+        return False, f"🌌 اکتشاف فقط برای سطح {EXPLORATION_MIN_LEVEL} به بالا باز است."
+    if u["energy"] < EXPLORATION_ENERGY_COST:
+        return False, "⚡ انرژی کافی نداری."
+    add_currency(user_id, "energy", -EXPLORATION_ENERGY_COST)
+    lines = []
+    for field, low, high in EXPLORATION_REWARDS:
+        amount = random.randint(low, high)
+        if amount > 0:
+            add_currency(user_id, field, amount)
+            lines.append(f"+ {amount} {field}")
+    add_xp(user_id, 15)
+    return True, "🌌 اکتشاف موفق!\n" + "\n".join(lines)
+
+
+# ============================================================
+#  بازار سیاه
+# ============================================================
+
+def get_black_market_today():
+    today = datetime.now().strftime("%Y-%m-%d")
+    conn = db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM black_market_stock WHERE day=?", (today,))
+    row = c.fetchone()
+    if row:
+        conn.close()
+        return BLACK_MARKET_POOL[row["item_index"] % len(BLACK_MARKET_POOL)]
+    index = random.randint(0, len(BLACK_MARKET_POOL) - 1)
+    c.execute("DELETE FROM black_market_stock")
+    c.execute("INSERT INTO black_market_stock (item_index, day) VALUES (?, ?)", (index, today))
+    conn.commit()
+    conn.close()
+    return BLACK_MARKET_POOL[index]
+
+
+def buy_black_market_item(user_id):
+    item = get_black_market_today()
+    u = get_user(user_id)
+    for currency, cost in item["cost"].items():
+        if u[currency] < cost:
+            return False, f"❌ {currency} کافی برای این پیشنهاد نداری."
+    for currency, cost in item["cost"].items():
+        add_currency(user_id, currency, -cost)
+    field, amount = item["give"]
+    add_currency(user_id, field, amount)
+    return True, f"🕵 خرید موفق: {item['title']} (+{amount} {field})"
+
+
+# ============================================================
+#  فصل بازی
+# ============================================================
+
+def get_season_info():
+    conn = db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM season WHERE id=1")
+    row = c.fetchone()
+    conn.close()
+    started = datetime.strptime(row["started_at"], "%Y-%m-%d")
+    days_passed = (datetime.now() - started).days
+    days_left = max(0, SEASON_LENGTH_DAYS - days_passed)
+    return row["season_number"], days_left
+
+
+def maybe_reset_season():
+    number, days_left = get_season_info()
+    if days_left <= 0:
+        conn = db()
+        c = conn.cursor()
+        c.execute(
+            "UPDATE season SET season_number=?, started_at=? WHERE id=1",
+            (number + 1, datetime.now().strftime("%Y-%m-%d")),
+        )
+        conn.commit()
+        conn.close()
+        return True
+    return False
+
+
+# ============================================================
+#  معامله مستقیم بین بازیکنان
+# ============================================================
+
+def create_trade_offer(seller_id, item_field, item_amount, price_coin):
+    u = get_user(seller_id)
+    if u[item_field] < item_amount:
+        return False, "❌ موجودی کافی برای این پیشنهاد نداری."
+    add_currency(seller_id, item_field, -item_amount)
+    conn = db()
+    c = conn.cursor()
+    c.execute(
+        "INSERT INTO trades (seller_id, item_field, item_amount, price_coin, created_at) VALUES (?, ?, ?, ?, ?)",
+        (seller_id, item_field, item_amount, price_coin, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    conn.commit()
+    conn.close()
+    return True, "✅ پیشنهاد معامله ثبت شد."
+
+
+def list_open_trades(limit=10):
+    conn = db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM trades WHERE status='open' ORDER BY trade_id DESC LIMIT ?", (limit,))
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+def accept_trade_offer(buyer_id, trade_id):
+    conn = db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM trades WHERE trade_id=? AND status='open'", (trade_id,))
+    trade = c.fetchone()
+    if not trade:
+        conn.close()
+        return False, "❌ این معامله دیگر در دسترس نیست."
+    buyer = get_user(buyer_id)
+    if buyer["coin"] < trade["price_coin"]:
+        conn.close()
+        return False, "❌ Coin کافی برای خرید نداری."
+    fee = trade["price_coin"] * TRADE_FEE_PERCENT / 100
+    seller_gets = trade["price_coin"] - fee
+    add_currency(buyer_id, "coin", -trade["price_coin"])
+    add_currency(buyer_id, trade["item_field"], trade["item_amount"])
+    add_currency(trade["seller_id"], "coin", seller_gets)
+    c.execute("UPDATE trades SET status='closed', buyer_id=? WHERE trade_id=?", (buyer_id, trade_id))
+    conn.commit()
+    conn.close()
+    return True, f"✅ معامله انجام شد! {trade['item_amount']} {trade['item_field']} دریافت کردی."
+
+
+# ============================================================
+#  بازار پیش‌بینی قیمت
+# ============================================================
+
+def place_prediction(user_id, direction):
+    u = get_user(user_id)
+    if u["coin"] < PREDICTION_BET_AMOUNT:
+        return False, "❌ Coin کافی برای شرط‌بندی نداری."
+    add_currency(user_id, "coin", -PREDICTION_BET_AMOUNT)
+    price = get_market_price()
+    conn = db()
+    c = conn.cursor()
+    c.execute(
+        "INSERT INTO predictions (user_id, direction, start_price, bet_amount, created_at) VALUES (?, ?, ?, ?, ?)",
+        (user_id, direction, price, PREDICTION_BET_AMOUNT, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    conn.commit()
+    conn.close()
+    return True, f"🎟 شرط ثبت شد: پیش‌بینی {direction} روی قیمت {price} Coin"
+
+
+def resolve_predictions():
+    """این تابع در job ساعتی بعد از تغییر قیمت صدا زده می‌شود تا شرط‌های باز را ببندد."""
+    new_price = get_market_price()
+    conn = db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM predictions WHERE status='open'")
+    open_bets = c.fetchall()
+    results = []
+    for bet in open_bets:
+        won = (bet["direction"] == "up" and new_price > bet["start_price"]) or (
+            bet["direction"] == "down" and new_price < bet["start_price"]
+        )
+        if won:
+            payout = bet["bet_amount"] * PREDICTION_WIN_MULTIPLIER
+            add_currency(bet["user_id"], "coin", payout)
+            results.append((bet["user_id"], True, payout))
+        else:
+            results.append((bet["user_id"], False, 0))
+        c.execute("UPDATE predictions SET status='closed' WHERE pred_id=?", (bet["pred_id"],))
+    conn.commit()
+    conn.close()
+    return results
+
+
+# ============================================================
+#  فیلتر فحش
+# ============================================================
+
+def contains_banned_word(text):
+    if not text:
+        return False
+    lowered = text.lower()
+    return any(word in lowered for word in BANNED_WORDS)
+
+
+# ============================================================
 #  کیبوردها
 # ============================================================
 
@@ -289,6 +726,14 @@ def main_menu_keyboard():
         [InlineKeyboardButton("👥 دعوت دوستان", callback_data="invite"),
          InlineKeyboardButton("🎁 جایزه روزانه", callback_data="daily"),
          InlineKeyboardButton("📰 اخبار", callback_data="news")],
+        [InlineKeyboardButton("🎖 دستاوردها", callback_data="achievements"),
+         InlineKeyboardButton("🔬 تحقیقات", callback_data="research"),
+         InlineKeyboardButton("🛡 دفاع", callback_data="defense")],
+        [InlineKeyboardButton("🌌 اکتشاف", callback_data="exploration"),
+         InlineKeyboardButton("🕵 بازار سیاه", callback_data="black_market"),
+         InlineKeyboardButton("📆 فصل", callback_data="season")],
+        [InlineKeyboardButton("📦 بازار بازیکنان", callback_data="p2p_market"),
+         InlineKeyboardButton("🎟 پیش‌بینی قیمت", callback_data="prediction")],
         [InlineKeyboardButton("❓ راهنما", callback_data="help"),
          InlineKeyboardButton("☎ پشتیبانی", callback_data="support")],
     ]
@@ -402,6 +847,19 @@ async def hourly_market_job(context: ContextTypes.DEFAULT_TYPE):
     set_market_price(new_price)
     direction = "📈 صعودی" if new_price >= price else "📉 نزولی"
     logger.info(f"Market price updated: {price} -> {new_price} ({direction})")
+
+    results = resolve_predictions()
+    for target_user_id, won, payout in results:
+        try:
+            if won:
+                text = f"🎉 پیش‌بینی‌ات درست بود! {round(payout,2)} Coin گرفتی."
+            else:
+                text = "😔 پیش‌بینی‌ات این‌بار درست نبود."
+            await context.bot.send_message(target_user_id, text)
+        except Exception as e:
+            logger.warning(f"Could not notify user {target_user_id}: {e}")
+
+    maybe_reset_season()
 
 
 # ============================================================
@@ -519,10 +977,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             add_currency(user_id, "coin", -total_cost)
             add_currency(user_id, "liber", amount)
-            await query.message.edit_text(
-                f"✅ خرید موفق!\n{amount} LIBER خریدی به قیمت {round(cost,2)} Coin (+ کارمزد {round(fee,2)})",
-                reply_markup=back_keyboard(),
-            )
+            add_currency(user_id, "trade_count", 1)
+            unlocked = check_achievements(user_id)
+            text = f"✅ خرید موفق!\n{amount} LIBER خریدی به قیمت {round(cost,2)} Coin (+ کارمزد {round(fee,2)})"
+            if unlocked:
+                text += "\n\n🎖 دستاورد جدید: " + ", ".join(unlocked)
+            await query.message.edit_text(text, reply_markup=back_keyboard())
         else:
             if u["liber"] < amount:
                 await query.message.edit_text("❌ موجودی LIBER کافی نیست.", reply_markup=back_keyboard())
@@ -531,10 +991,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             net = cost - fee
             add_currency(user_id, "liber", -amount)
             add_currency(user_id, "coin", net)
-            await query.message.edit_text(
-                f"✅ فروش موفق!\n{amount} LIBER فروختی و {round(net,2)} Coin گرفتی (کارمزد {round(fee,2)})",
-                reply_markup=back_keyboard(),
-            )
+            add_currency(user_id, "trade_count", 1)
+            unlocked = check_achievements(user_id)
+            text = f"✅ فروش موفق!\n{amount} LIBER فروختی و {round(net,2)} Coin گرفتی (کارمزد {round(fee,2)})"
+            if unlocked:
+                text += "\n\n🎖 دستاورد جدید: " + ", ".join(unlocked)
+            await query.message.edit_text(text, reply_markup=back_keyboard())
 
     # ---------------- بانک ----------------
     elif data == "bank":
@@ -561,7 +1023,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         add_currency(user_id, "coin", -amount)
         add_currency(user_id, "bank_deposit", amount)
-        await query.message.edit_text(f"✅ {amount} Coin به سپرده بانکی اضافه شد.", reply_markup=back_keyboard("bank"))
+        unlocked = check_achievements(user_id)
+        text = f"✅ {amount} Coin به سپرده بانکی اضافه شد."
+        if unlocked:
+            text += "\n\n🎖 دستاورد جدید: " + ", ".join(unlocked)
+        await query.message.edit_text(text, reply_markup=back_keyboard("bank"))
 
     elif data == "bank_withdraw":
         u2 = get_user(user_id)
@@ -629,7 +1095,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         set_field(user_id, "country_name", f"کشور {u['first_name']}")
         set_field(user_id, "country_pop", 100)
         set_field(user_id, "country_budget", 200)
-        await query.message.edit_text("🎉 کشورت ساخته شد! ۱۰۰ جمعیت و ۲۰۰ Coin بودجه اولیه گرفتی.", reply_markup=back_keyboard())
+        unlocked = check_achievements(user_id)
+        text = "🎉 کشورت ساخته شد! ۱۰۰ جمعیت و ۲۰۰ Coin بودجه اولیه گرفتی."
+        if unlocked:
+            text += "\n\n🎖 دستاورد جدید: " + ", ".join(unlocked)
+        await query.message.edit_text(text, reply_markup=back_keyboard())
 
     elif data == "country_tax":
         u2 = get_user(user_id)
@@ -678,7 +1148,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 add_currency(user_id, field, amount)
             reward_lines.append(f"+ {amount} {field}")
 
+        add_currency(user_id, "chest_count", 1)
+        unlocked = check_achievements(user_id)
         text = f"🎉 صندوق {key} باز شد!\n\n" + "\n".join(reward_lines)
+        if unlocked:
+            text += "\n\n🎖 دستاورد جدید: " + ", ".join(unlocked)
         await query.message.edit_text(text, reply_markup=back_keyboard("chests"))
 
     # ---------------- مأموریت‌ها ----------------
@@ -754,7 +1228,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         add_currency(user_id, "diamond", -info["cost_diamond"])
         set_field(user_id, "vip", tier)
-        await query.message.edit_text(f"🎉 تبریک! اکنون VIP {tier} هستی.", reply_markup=back_keyboard("vip"))
+        unlocked = check_achievements(user_id)
+        text = f"🎉 تبریک! اکنون VIP {tier} هستی."
+        if unlocked:
+            text += "\n\n🎖 دستاورد جدید: " + ", ".join(unlocked)
+        await query.message.edit_text(text, reply_markup=back_keyboard("vip"))
 
     # ---------------- اتحاد ----------------
     elif data == "alliance":
@@ -793,7 +1271,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
         conn.close()
         set_field(user_id, "alliance_id", alliance_id)
-        await query.message.edit_text("🎉 اتحاد جدید ساخته شد و رهبر آن شدی!", reply_markup=back_keyboard("alliance"))
+        unlocked = check_achievements(user_id)
+        text = "🎉 اتحاد جدید ساخته شد و رهبر آن شدی!"
+        if unlocked:
+            text += "\n\n🎖 دستاورد جدید: " + ", ".join(unlocked)
+        await query.message.edit_text(text, reply_markup=back_keyboard("alliance"))
 
     elif data == "alliance_donate":
         amount = min(100, u["coin"])
@@ -835,13 +1317,199 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=back_keyboard(),
         )
 
+    # ---------------- فروشگاه ----------------
+    elif data == "shop":
+        buttons = []
+        row = []
+        for key, item in SHOP_ITEMS.items():
+            row.append(InlineKeyboardButton(item["title"], callback_data=f"shop_{key}"))
+            if len(row) == 2:
+                buttons.append(row)
+                row = []
+        if row:
+            buttons.append(row)
+        buttons.append([InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back_main")])
+        await query.message.edit_text("🏪 فروشگاه LIBER:", reply_markup=InlineKeyboardMarkup(buttons))
+
+    elif data.startswith("shop_"):
+        key = data.split("_", 1)[1]
+        item = SHOP_ITEMS.get(key)
+        if not item:
+            await query.message.edit_text("❌ آیتم نامعتبر.", reply_markup=back_keyboard("shop"))
+            return
+        for currency, cost in item["cost"].items():
+            if u[currency] < cost:
+                await query.message.edit_text(f"❌ {currency} کافی نداری.", reply_markup=back_keyboard("shop"))
+                return
+        for currency, cost in item["cost"].items():
+            add_currency(user_id, currency, -cost)
+        field, amount = item["give"]
+        if field == "frame":
+            set_field(user_id, "frame", amount)
+            await query.message.edit_text(f"✅ خرید موفق: {item['title']}", reply_markup=back_keyboard("shop"))
+        else:
+            add_currency(user_id, field, amount)
+            await query.message.edit_text(f"✅ خرید موفق: {item['title']}", reply_markup=back_keyboard("shop"))
+
+    # ---------------- دستاوردها ----------------
+    elif data == "achievements":
+        unlocked = check_achievements(user_id)
+        unlocked_keys = get_achievements(user_id)
+        lines = []
+        for key, ach in ACHIEVEMENTS.items():
+            mark = "✅" if key in unlocked_keys else "🔒"
+            lines.append(f"{mark} {ach['title']} — {ach['desc']}")
+        text = "🎖 <b>دستاوردهای شما</b>\n\n" + "\n".join(lines)
+        if unlocked:
+            text += "\n\n🎉 دستاورد جدید باز شد: " + ", ".join(unlocked)
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_keyboard())
+
+    # ---------------- تحقیقات ----------------
+    elif data == "research":
+        info = get_research_info(user_id)
+        if info:
+            text = (
+                "🔬 <b>تحقیقات</b>\n\n"
+                f"سطح فعلی: {u['research_level']}\n"
+                f"تحقیق بعدی: {info['name']}\n"
+                f"هزینه: {info['cost_coin']} Coin\n"
+                f"اثر: {info['effect']}"
+            )
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔬 ارتقا", callback_data="research_upgrade")],
+                [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back_main")],
+            ])
+        else:
+            text = "🔬 تمام سطوح تحقیقاتی را کامل کرده‌ای! 🎉"
+            kb = back_keyboard()
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+
+    elif data == "research_upgrade":
+        success, msg = upgrade_research(user_id)
+        await query.message.edit_text(msg, reply_markup=back_keyboard("research"))
+
+    # ---------------- دفاع ----------------
+    elif data == "defense":
+        cost = get_defense_upgrade_cost(u["defense_level"])
+        text = (
+            "🛡 <b>دفاع کشور</b>\n\n"
+            f"سطح فعلی دفاع: {u['defense_level']}\n"
+            f"هزینه ارتقای بعدی: {cost} Coin"
+        )
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🛡 ارتقای دفاع", callback_data="defense_upgrade")],
+            [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back_main")],
+        ])
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+
+    elif data == "defense_upgrade":
+        success, msg = upgrade_defense(user_id)
+        await query.message.edit_text(msg, reply_markup=back_keyboard("defense"))
+
+    # ---------------- اکتشاف ----------------
+    elif data == "exploration":
+        text = (
+            "🌌 <b>اکتشاف</b>\n\n"
+            f"حداقل سطح لازم: {EXPLORATION_MIN_LEVEL}\n"
+            f"هزینه انرژی: {EXPLORATION_ENERGY_COST}\n"
+            f"سطح فعلی شما: {u['level']} | انرژی: {u['energy']}"
+        )
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🌌 شروع اکتشاف", callback_data="exploration_go")],
+            [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back_main")],
+        ])
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+
+    elif data == "exploration_go":
+        success, msg = do_exploration(user_id)
+        await query.message.edit_text(msg, reply_markup=back_keyboard("exploration"))
+
+    # ---------------- بازار سیاه ----------------
+    elif data == "black_market":
+        item = get_black_market_today()
+        cost_text = ", ".join(f"{c} {k}" for k, c in item["cost"].items())
+        text = (
+            "🕵 <b>بازار سیاه امروز</b>\n\n"
+            f"{item['title']}\n"
+            f"💰 قیمت: {cost_text}\n"
+            "⏳ این پیشنهاد فردا تغییر می‌کند."
+        )
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🛒 خرید", callback_data="black_market_buy")],
+            [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back_main")],
+        ])
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+
+    elif data == "black_market_buy":
+        success, msg = buy_black_market_item(user_id)
+        await query.message.edit_text(msg, reply_markup=back_keyboard("black_market"))
+
+    # ---------------- فصل ----------------
+    elif data == "season":
+        maybe_reset_season()
+        number, days_left = get_season_info()
+        text = (
+            "📆 <b>فصل بازی</b>\n\n"
+            f"فصل فعلی: {number}\n"
+            f"روزهای باقی‌مانده: {days_left}\n"
+            "🏆 در پایان هر فصل، جوایز و مدال به برترین بازیکنان تعلق می‌گیرد."
+        )
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_keyboard())
+
+    # ---------------- بازار بازیکنان (P2P) ----------------
+    elif data == "p2p_market":
+        trades = list_open_trades()
+        lines = [
+            f"#{t['trade_id']} — {t['item_amount']} {t['item_field']} به {t['price_coin']} Coin"
+            for t in trades
+        ] or ["فعلاً هیچ پیشنهادی موجود نیست."]
+        text = "📦 <b>بازار مستقیم بازیکنان</b>\n\n" + "\n".join(lines)
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("➕ ثبت پیشنهاد فروش LIBER", callback_data="p2p_sell_offer")],
+            [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back_main")],
+        ])
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+
+    elif data == "p2p_sell_offer":
+        # پیشنهاد پیش‌فرض نمونه: فروش ۲۰ LIBER به قیمت بازار فعلی ضربدر ۲۰
+        amount = 20
+        price = round(get_market_price() * amount * 1.05, 2)
+        success, msg = create_trade_offer(user_id, "liber", amount, price)
+        await query.message.edit_text(msg, reply_markup=back_keyboard("p2p_market"))
+
+    elif data.startswith("p2p_buy_"):
+        trade_id = int(data.split("_")[-1])
+        success, msg = accept_trade_offer(user_id, trade_id)
+        await query.message.edit_text(msg, reply_markup=back_keyboard("p2p_market"))
+
+    # ---------------- بازار پیش‌بینی قیمت ----------------
+    elif data == "prediction":
+        price = get_market_price()
+        text = (
+            "🎟 <b>بازار پیش‌بینی قیمت LIBER</b>\n\n"
+            f"📈 قیمت فعلی: {price} Coin\n"
+            f"💰 مبلغ شرط: {PREDICTION_BET_AMOUNT} Coin\n"
+            f"🏆 در صورت برد: ضریب {PREDICTION_WIN_MULTIPLIER}x\n\n"
+            "پیش‌بینی می‌کنی قیمت تا ساعت بعد بالا برود یا پایین بیاید؟"
+        )
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📈 صعودی", callback_data="predict_up"),
+             InlineKeyboardButton("📉 نزولی", callback_data="predict_down")],
+            [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back_main")],
+        ])
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+
+    elif data in ("predict_up", "predict_down"):
+        direction = "up" if data == "predict_up" else "down"
+        success, msg = place_prediction(user_id, direction)
+        await query.message.edit_text(msg, reply_markup=back_keyboard("prediction"))
+
     # ---------------- پنل ادمین ----------------
     elif data == "admin_panel" and user_id in ADMIN_IDS:
         await show_admin_panel(query)
 
     else:
         placeholders = {
-            "shop": "🏪 فروشگاه (خرید صندوق و انرژی با Coin/Diamond) در نسخه بعدی گسترش می‌یابد.",
             "news": "📰 اخبار جهانی به‌زودی فعال می‌شود.",
             "help": "❓ راهنما: از منوی اصلی گزینه‌ها را انتخاب کن.",
             "support": "☎ پشتیبانی: به‌زودی آیدی پشتیبانی اضافه می‌شود.",
@@ -950,6 +1618,30 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ پیام برای {sent} کاربر ارسال شد.")
 
 
+async def text_message_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """فیلتر فحش ساده روی پیام‌های متنی کاربر (خارج از دکمه‌ها)."""
+    if not update.message or not update.message.text:
+        return
+    user_id = update.effective_user.id
+    if is_banned(user_id):
+        return
+    if contains_banned_word(update.message.text):
+        conn = db()
+        c = conn.cursor()
+        c.execute("UPDATE users SET warn_count=warn_count+1 WHERE user_id=?", (user_id,))
+        conn.commit()
+        c.execute("SELECT warn_count FROM users WHERE user_id=?", (user_id,))
+        warn_count = c.fetchone()["warn_count"]
+        conn.close()
+        if warn_count >= MAX_WARN_BEFORE_BAN:
+            set_field(user_id, "banned", 1)
+            await update.message.reply_text("🚫 به دلیل استفاده مکرر از الفاظ نامناسب، حساب شما مسدود شد.")
+        else:
+            await update.message.reply_text(
+                f"⚠️ لطفاً از الفاظ نامناسب استفاده نکن. اخطار {warn_count}/{MAX_WARN_BEFORE_BAN}"
+            )
+
+
 # ============================================================
 #  main
 # ============================================================
@@ -964,6 +1656,7 @@ def main():
     app.add_handler(CommandHandler("unban", unban_command))
     app.add_handler(CommandHandler("broadcast", broadcast_command))
     app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_filter))
 
     # نوسان خودکار قیمت بازار هر ۱ ساعت
     app.job_queue.run_repeating(
