@@ -34,7 +34,7 @@ from telegram.ext import (
 # SETTINGS
 # =====================================================================
 
-TOKEN = os.environ.get("8818731091:AAHD4vNWYdFfDD6C0__60vsd4hCDumRuB-Y", "8818731091:AAHD4vNWYdFfDD6C0__60vsd4hCDumRuB-Y")
+TOKEN = "8818731091:AAHD4vNWYdFfDD6C0__60vsd4hCDumRuB-Y"
 CHANNEL = "@Libercoin1"          # mandatory channel — set to None to disable
 ADMIN_IDS = [6188951798]
 DATA_FILE = "liber_data.json"
