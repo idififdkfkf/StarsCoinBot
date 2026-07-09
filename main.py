@@ -38,6 +38,7 @@ from telegram.ext import (
 BOT_TOKEN = "8818731091:AAHYaM4Wf9gZipqKJfXSwQhFx4qzKgnzFPQ"
 DB_PATH = "liber.db"
 ADMIN_IDS = [6188951798]  # admins who can access the admin panel
+REQUIRED_CHANNEL = "@Libercoin1"  # set to None to disable mandatory join check
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -234,6 +235,60 @@ def init_db():
         )
         """)
 
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS seasons (
+            season_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            started_at TEXT,
+            ends_at TEXT,
+            active INTEGER DEFAULT 1
+        )
+        """)
+
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS season_scores (
+            user_id INTEGER,
+            season_id INTEGER,
+            points INTEGER DEFAULT 0,
+            league TEXT DEFAULT 'bronze',
+            PRIMARY KEY (user_id, season_id),
+            FOREIGN KEY(user_id) REFERENCES users(user_id),
+            FOREIGN KEY(season_id) REFERENCES seasons(season_id)
+        )
+        """)
+
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS game_history (
+            game_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            game_type TEXT,
+            bet REAL,
+            result REAL,
+            played_at TEXT,
+            FOREIGN KEY(user_id) REFERENCES users(user_id)
+        )
+        """)
+
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS chest_cooldowns (
+            user_id INTEGER PRIMARY KEY,
+            last_chest TEXT,
+            FOREIGN KEY(user_id) REFERENCES users(user_id)
+        )
+        """)
+
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS auctions (
+            auction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_name TEXT,
+            current_price REAL,
+            current_winner INTEGER,
+            active INTEGER DEFAULT 1,
+            created_at TEXT,
+            ends_at TEXT
+        )
+        """)
+
         # seed market price if empty
         row = conn.execute("SELECT COUNT(*) as c FROM market").fetchone()
         if row["c"] == 0:
@@ -380,12 +435,43 @@ def admin_panel_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 
+def join_channel_keyboard():
+    channel_username = REQUIRED_CHANNEL.replace("@", "")
+    keyboard = [
+        [InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{channel_username}")],
+        [InlineKeyboardButton("✅ عضو شدم", callback_data="check_join")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+async def is_channel_member(bot, user_id: int) -> bool:
+    """Checks membership in REQUIRED_CHANNEL. Returns True if check is disabled."""
+    if not REQUIRED_CHANNEL:
+        return True
+    try:
+        member = await bot.get_chat_member(REQUIRED_CHANNEL, user_id)
+        return member.status in ("member", "administrator", "creator")
+    except Exception as e:
+        logger.warning(f"Channel membership check failed: {e}")
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Command Handlers
 # ---------------------------------------------------------------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+
+    if not await is_channel_member(context.bot, user.id):
+        await update.message.reply_text(
+            f"🔥 سلام {user.first_name}!\n\n"
+            f"برای استفاده از ربات LIBER ابتدا باید عضو کانال شوید:\n{REQUIRED_CHANNEL}\n\n"
+            "بعد از عضویت روی «✅ عضو شدم» بزنید.",
+            reply_markup=join_channel_keyboard(),
+        )
+        return
+
     referred_by = None
 
     if context.args:
@@ -418,6 +504,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         welcome_text = f"👋 خوش برگشتی {user.first_name}!"
 
     await update.message.reply_text(welcome_text, reply_markup=main_menu_keyboard())
+
+
+async def check_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+    await query.answer()
+
+    if not await is_channel_member(context.bot, user.id):
+        await query.answer("❌ هنوز عضو کانال نشده‌اید.", show_alert=True)
+        return
+
+    db_user, is_new = create_user_if_missing(
+        user.id, user.username or "", user.first_name or ""
+    )
+
+    await query.edit_message_text("✅ عضویت شما تایید شد! خوش آمدید به LIBER 🌍")
+    await query.message.reply_text(
+        "🌍 منوی اصلی LIBER", reply_markup=main_menu_keyboard()
+    )
 
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1581,6 +1686,416 @@ async def events_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ---------------------------------------------------------------------------
+# League / Season System
+# ---------------------------------------------------------------------------
+
+LEAGUES = ["bronze", "silver", "gold", "platinum", "diamond", "titan", "legendary", "galactic"]
+LEAGUE_NAMES = {
+    "bronze": "🥉 برنز", "silver": "🥈 نقره", "gold": "🥇 طلا",
+    "platinum": "🔷 پلاتینیوم", "diamond": "💎 الماس", "titan": "🔱 تایتان",
+    "legendary": "👑 افسانه‌ای", "galactic": "🌌 کهکشانی",
+}
+LEAGUE_THRESHOLDS = {
+    "bronze": 0, "silver": 200, "gold": 500, "platinum": 1000,
+    "diamond": 2000, "titan": 4000, "legendary": 8000, "galactic": 15000,
+}
+
+
+def get_active_season():
+    with closing(get_conn()) as conn:
+        season = conn.execute(
+            "SELECT * FROM seasons WHERE active = 1 ORDER BY season_id DESC LIMIT 1"
+        ).fetchone()
+    if season:
+        return season
+
+    now = datetime.utcnow()
+    ends_at = now + timedelta(days=30)
+    with closing(get_conn()) as conn, conn:
+        cursor = conn.execute(
+            """INSERT INTO seasons (name, started_at, ends_at, active)
+               VALUES (?, ?, ?, 1)""",
+            (f"فصل {now.strftime('%Y-%m')}", now.isoformat(), ends_at.isoformat()),
+        )
+    return get_active_season()
+
+
+def add_season_points(user_id: int, points: int):
+    season = get_active_season()
+    with closing(get_conn()) as conn, conn:
+        existing = conn.execute(
+            "SELECT * FROM season_scores WHERE user_id = ? AND season_id = ?",
+            (user_id, season["season_id"]),
+        ).fetchone()
+
+        if existing:
+            new_points = existing["points"] + points
+        else:
+            new_points = points
+
+        new_league = "bronze"
+        for league in LEAGUES:
+            if new_points >= LEAGUE_THRESHOLDS[league]:
+                new_league = league
+
+        conn.execute(
+            """INSERT INTO season_scores (user_id, season_id, points, league)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(user_id, season_id) DO UPDATE SET
+                 points = excluded.points, league = excluded.league""",
+            (user_id, season["season_id"], new_points, new_league),
+        )
+
+
+async def league_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    season = get_active_season()
+
+    with closing(get_conn()) as conn:
+        score = conn.execute(
+            "SELECT * FROM season_scores WHERE user_id = ? AND season_id = ?",
+            (user_id, season["season_id"]),
+        ).fetchone()
+
+    points = score["points"] if score else 0
+    league = score["league"] if score else "bronze"
+
+    text = (
+        f"🏆 {season['name']}\n\n"
+        f"لیگ فعلی شما: {LEAGUE_NAMES[league]}\n"
+        f"امتیاز: {points}\n\n"
+        "لیگ‌های بازی:\n"
+    )
+    for lg in LEAGUES:
+        text += f"  {LEAGUE_NAMES[lg]} — {LEAGUE_THRESHOLDS[lg]}+ امتیاز\n"
+
+    await update.message.reply_text(text)
+
+
+async def season_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    season = get_active_season()
+
+    with closing(get_conn()) as conn:
+        rows = conn.execute(
+            """SELECT u.first_name, s.points, s.league FROM season_scores s
+               JOIN users u ON u.user_id = s.user_id
+               WHERE s.season_id = ?
+               ORDER BY s.points DESC LIMIT 10""",
+            (season["season_id"],),
+        ).fetchall()
+
+    if not rows:
+        await update.message.reply_text("هنوز امتیازی در این فصل ثبت نشده.")
+        return
+
+    text = f"🏆 برترین‌های {season['name']}\n\n"
+    for i, r in enumerate(rows, start=1):
+        text += f"{i}. {r['first_name']} — {LEAGUE_NAMES[r['league']]} ({r['points']} امتیاز)\n"
+
+    await update.message.reply_text(text)
+
+
+# ---------------------------------------------------------------------------
+# Mini-Games (entertainment only — virtual LIBER wagers, no cash out)
+# ---------------------------------------------------------------------------
+
+async def game_wheel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Spin the wheel: bet virtual LIBER, win a random multiplier."""
+    user_id = update.effective_user.id
+    user = get_user(user_id)
+    if not user:
+        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("استفاده: /wheel مقدار_شرط")
+        return
+
+    try:
+        bet = float(context.args[0])
+    except ValueError:
+        await update.message.reply_text("عدد معتبر وارد کن.")
+        return
+
+    if bet <= 0 or bet > user["liber"]:
+        await update.message.reply_text("موجودی LIBER کافی نیست.")
+        return
+
+    outcomes = [0, 0.5, 1, 1.5, 2, 3, 5]
+    weights = [25, 20, 20, 15, 10, 7, 3]
+    multiplier = random.choices(outcomes, weights=weights, k=1)[0]
+    result = round(bet * multiplier, 2)
+    net = result - bet
+
+    with closing(get_conn()) as conn, conn:
+        conn.execute(
+            "UPDATE users SET liber = liber - ? + ? WHERE user_id = ?",
+            (bet, result, user_id),
+        )
+        conn.execute(
+            """INSERT INTO game_history (user_id, game_type, bet, result, played_at)
+               VALUES (?, 'wheel', ?, ?, ?)""",
+            (user_id, bet, result, datetime.utcnow().isoformat()),
+        )
+
+    add_season_points(user_id, max(0, int(net)))
+    log_action(user_id, "GAME_WHEEL", f"bet={bet} multiplier={multiplier}")
+
+    emoji = "🎉" if multiplier >= 1 else "😔"
+    await update.message.reply_text(
+        f"🎰 گردونه چرخید!\nضریب: x{multiplier}\nنتیجه: {result:.2f} LIBER {emoji}"
+    )
+
+
+async def game_lucky(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Simple 50/50-ish coin flip style game with in-game LIBER."""
+    user_id = update.effective_user.id
+    user = get_user(user_id)
+    if not user:
+        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("استفاده: /lucky مقدار_شرط")
+        return
+
+    try:
+        bet = float(context.args[0])
+    except ValueError:
+        await update.message.reply_text("عدد معتبر وارد کن.")
+        return
+
+    if bet <= 0 or bet > user["liber"]:
+        await update.message.reply_text("موجودی LIBER کافی نیست.")
+        return
+
+    win = random.random() < 0.45  # slightly under 50% for house balance
+    result = bet * 2 if win else 0
+
+    with closing(get_conn()) as conn, conn:
+        conn.execute(
+            "UPDATE users SET liber = liber - ? + ? WHERE user_id = ?",
+            (bet, result, user_id),
+        )
+        conn.execute(
+            """INSERT INTO game_history (user_id, game_type, bet, result, played_at)
+               VALUES (?, 'lucky', ?, ?, ?)""",
+            (user_id, bet, result, datetime.utcnow().isoformat()),
+        )
+
+    log_action(user_id, "GAME_LUCKY", f"bet={bet} win={win}")
+
+    if win:
+        await update.message.reply_text(f"🍀 بردی! +{result:.2f} LIBER")
+    else:
+        await update.message.reply_text(f"❌ باختی. -{bet:.2f} LIBER")
+
+
+async def game_treasure(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Free daily treasure hunt — small random virtual reward, no bet required."""
+    user_id = update.effective_user.id
+    user = get_user(user_id)
+    if not user:
+        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
+        return
+
+    with closing(get_conn()) as conn:
+        cooldown = conn.execute(
+            "SELECT * FROM chest_cooldowns WHERE user_id = ?", (user_id,)
+        ).fetchone()
+
+    now = datetime.utcnow()
+    if cooldown:
+        last = datetime.fromisoformat(cooldown["last_chest"])
+        if now - last < timedelta(hours=6):
+            remaining = timedelta(hours=6) - (now - last)
+            mins = int(remaining.total_seconds() // 60)
+            await update.message.reply_text(f"⏳ گنج بعدی تا {mins} دقیقه دیگر آماده می‌شود.")
+            return
+
+    reward = random.randint(10, 60)
+    add_currency(user_id, liber=reward)
+
+    with closing(get_conn()) as conn, conn:
+        conn.execute(
+            """INSERT INTO chest_cooldowns (user_id, last_chest) VALUES (?, ?)
+               ON CONFLICT(user_id) DO UPDATE SET last_chest = excluded.last_chest""",
+            (user_id, now.isoformat()),
+        )
+
+    log_action(user_id, "GAME_TREASURE", f"reward={reward}")
+    await update.message.reply_text(f"🎁 گنج پیدا شد! +{reward} LIBER")
+
+
+CHESTS = {
+    "free": {"name": "🎁 صندوق رایگان", "cost": 0, "min": 5, "max": 30},
+    "bronze": {"name": "🥉 صندوق برنزی", "cost": 100, "min": 50, "max": 150},
+    "silver": {"name": "🥈 صندوق نقره‌ای", "cost": 300, "min": 150, "max": 450},
+    "gold": {"name": "🥇 صندوق طلایی", "cost": 700, "min": 400, "max": 1100},
+    "diamond": {"name": "💎 صندوق الماسی", "cost": 1500, "min": 900, "max": 2500},
+}
+
+
+async def open_chest(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user = get_user(user_id)
+    if not user:
+        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
+        return
+
+    if not context.args or context.args[0] not in CHESTS:
+        options = ", ".join(CHESTS.keys())
+        await update.message.reply_text(f"استفاده: /chest نوع\nانواع: {options}")
+        return
+
+    key = context.args[0]
+    chest = CHESTS[key]
+
+    if user["liber"] < chest["cost"]:
+        await update.message.reply_text("LIBER کافی نیست.")
+        return
+
+    reward = random.randint(chest["min"], chest["max"])
+
+    with closing(get_conn()) as conn, conn:
+        conn.execute(
+            "UPDATE users SET liber = liber - ? + ? WHERE user_id = ?",
+            (chest["cost"], reward, user_id),
+        )
+
+    log_action(user_id, "OPEN_CHEST", f"{key} reward={reward}")
+    await update.message.reply_text(
+        f"{chest['name']} باز شد!\nدریافتی: {reward} LIBER (هزینه: {chest['cost']})"
+    )
+
+
+async def games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "🎮 بازی‌ها (سرگرمی - LIBER داخل‌بازی)\n\n"
+        "🎰 /wheel مقدار — گردونه شانس\n"
+        "🍀 /lucky مقدار — شیر یا خط\n"
+        "🎁 /treasure — گنج رایگان (هر ۶ ساعت)\n"
+        "📦 /chest نوع — صندوق‌ها (free, bronze, silver, gold, diamond)\n"
+        "🏆 /league — وضعیت لیگ فصلی\n"
+        "📊 /season_top — رتبه‌بندی فصل"
+    )
+    await update.message.reply_text(text)
+
+
+# ---------------------------------------------------------------------------
+# Auction (virtual LIBER only — no real payment)
+# ---------------------------------------------------------------------------
+
+AUCTION_INCREMENT = 10
+AUCTION_ITEMS = [
+    "🎁 جعبه طلایی", "🖼 قاب کهکشانی", "🏷 لقب افسانه‌ای",
+    "💎 آواتار الماسی", "🎖 مدال ویژه فصل",
+]
+
+
+def get_active_auction():
+    with closing(get_conn()) as conn:
+        auction = conn.execute(
+            "SELECT * FROM auctions WHERE active = 1 ORDER BY auction_id DESC LIMIT 1"
+        ).fetchone()
+    return auction
+
+
+def create_new_auction():
+    item = random.choice(AUCTION_ITEMS)
+    now = datetime.utcnow()
+    ends_at = now + timedelta(hours=12)
+    with closing(get_conn()) as conn, conn:
+        conn.execute(
+            """INSERT INTO auctions (item_name, current_price, current_winner, active, created_at, ends_at)
+               VALUES (?, ?, NULL, 1, ?, ?)""",
+            (item, 50, now.isoformat(), ends_at.isoformat()),
+        )
+    return get_active_auction()
+
+
+async def auction_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    auction = get_active_auction()
+    if not auction:
+        auction = create_new_auction()
+
+    winner_text = "هنوز کسی شرکت نکرده"
+    if auction["current_winner"]:
+        winner = get_user(auction["current_winner"])
+        if winner:
+            winner_text = winner["first_name"]
+
+    ends_at = datetime.fromisoformat(auction["ends_at"])
+    remaining = ends_at - datetime.utcnow()
+    hrs = max(0, int(remaining.total_seconds() // 3600))
+
+    text = (
+        f"🏷 مزایده LIBER\n\n"
+        f"🎁 آیتم: {auction['item_name']}\n"
+        f"💰 قیمت فعلی: {auction['current_price']} LIBER\n"
+        f"🏆 برنده فعلی: {winner_text}\n"
+        f"⏳ زمان باقی‌مانده: {hrs} ساعت\n\n"
+        f"برای شرکت: /bid"
+    )
+    await update.message.reply_text(text)
+
+
+async def auction_bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user = get_user(user_id)
+    if not user:
+        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
+        return
+
+    auction = get_active_auction()
+    if not auction:
+        auction = create_new_auction()
+
+    ends_at = datetime.fromisoformat(auction["ends_at"])
+    if datetime.utcnow() >= ends_at:
+        with closing(get_conn()) as conn, conn:
+            conn.execute(
+                "UPDATE auctions SET active = 0 WHERE auction_id = ?",
+                (auction["auction_id"],),
+            )
+        if auction["current_winner"]:
+            add_season_points(auction["current_winner"], 100)
+        auction = create_new_auction()
+        await update.message.reply_text(
+            "⏳ مزایده قبلی به پایان رسید و مزایده جدیدی شروع شد. دوباره امتحان کن: /bid"
+        )
+        return
+
+    next_price = auction["current_price"] + AUCTION_INCREMENT
+
+    if user["liber"] < next_price:
+        await update.message.reply_text(
+            f"موجودی کافی نیست. برای پیشنهاد بعدی نیاز به {next_price} LIBER داری."
+        )
+        return
+
+    # refund the previous highest bidder (virtual, in-game only)
+    if auction["current_winner"] and auction["current_winner"] != user_id:
+        add_currency(auction["current_winner"], liber=auction["current_price"])
+
+    with closing(get_conn()) as conn, conn:
+        conn.execute(
+            "UPDATE users SET liber = liber - ? WHERE user_id = ?",
+            (next_price, user_id),
+        )
+        conn.execute(
+            "UPDATE auctions SET current_price = ?, current_winner = ? WHERE auction_id = ?",
+            (next_price, user_id, auction["auction_id"]),
+        )
+
+    log_action(user_id, "AUCTION_BID", f"price={next_price}")
+    await update.message.reply_text(
+        f"✅ پیشنهاد ثبت شد! شما در حال حاضر برنده فعلی مزایده «{auction['item_name']}» هستید.\n"
+        f"قیمت فعلی: {next_price} LIBER"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Message router for reply-keyboard buttons
 # ---------------------------------------------------------------------------
 
@@ -1599,6 +2114,8 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎯 مأموریت‌ها": get_missions,
         "🎖 دستاوردها": achievements_view,
         "🤝 اتحاد": alliance_view,
+        "🎮 بازی‌ها": games_menu,
+        "🏷 مزایده": auction_view,
     }
 
     handler = routes.get(text)
@@ -1629,6 +2146,7 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(check_join_callback, pattern="^check_join$"))
     app.add_handler(CommandHandler("profile", profile))
     app.add_handler(CommandHandler("wallet", wallet))
     app.add_handler(CommandHandler("market", market_view))
@@ -1667,6 +2185,20 @@ def main():
 
     # Events
     app.add_handler(CommandHandler("events", events_view))
+
+    # League & season
+    app.add_handler(CommandHandler("league", league_view))
+    app.add_handler(CommandHandler("season_top", season_leaderboard))
+
+    # Mini-games
+    app.add_handler(CommandHandler("wheel", game_wheel))
+    app.add_handler(CommandHandler("lucky", game_lucky))
+    app.add_handler(CommandHandler("treasure", game_treasure))
+    app.add_handler(CommandHandler("chest", open_chest))
+
+    # Auction
+    app.add_handler(CommandHandler("auction", auction_view))
+    app.add_handler(CommandHandler("bid", auction_bid))
 
     # Admin
     app.add_handler(CommandHandler("admin", admin_panel))
