@@ -104,6 +104,11 @@ STAR_LIBER_PACKS = {
     "pack_mega":   {"title": "📦 بسته مگا",   "liber": 3000, "stars": 1100},
 }
 
+# ------------------------------------------------------------
+#  کد هدیه (Gift Code)
+# ------------------------------------------------------------
+GIFT_CODE_MAX_USES_DEFAULT = 1
+
 LEAGUE_THRESHOLDS = [
     (0, "🥉 برنز"),
     (500, "🥈 نقره"),
@@ -423,6 +428,29 @@ def init_db():
         CREATE TABLE IF NOT EXISTS tournament (
             id INTEGER PRIMARY KEY,
             started_at TEXT
+        )
+        """
+    )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS gift_codes (
+            code TEXT PRIMARY KEY,
+            reward_field TEXT,
+            reward_amount REAL,
+            max_uses INTEGER,
+            used_count INTEGER DEFAULT 0,
+            created_by INTEGER,
+            created_at TEXT
+        )
+        """
+    )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS gift_code_redemptions (
+            code TEXT,
+            user_id INTEGER,
+            redeemed_at TEXT,
+            PRIMARY KEY (code, user_id)
         )
         """
     )
@@ -941,6 +969,107 @@ def grant_liber_pack(user_id, pack_key):
     return pack["liber"]
 
 
+# ============================================================
+#  کد هدیه (Gift Code)
+# ============================================================
+
+def create_gift_code(code, reward_field, reward_amount, max_uses, created_by):
+    conn = db()
+    c = conn.cursor()
+    try:
+        c.execute(
+            "INSERT INTO gift_codes (code, reward_field, reward_amount, max_uses, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (code.upper(), reward_field, reward_amount, max_uses, created_by, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        conn.commit()
+        success = True
+    except sqlite3.IntegrityError:
+        success = False
+    conn.close()
+    return success
+
+
+def redeem_gift_code(user_id, code):
+    code = code.strip().upper()
+    conn = db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM gift_codes WHERE code=?", (code,))
+    gift = c.fetchone()
+    if not gift:
+        conn.close()
+        return False, "❌ این کد هدیه معتبر نیست."
+
+    if gift["used_count"] >= gift["max_uses"]:
+        conn.close()
+        return False, "❌ ظرفیت استفاده از این کد تمام شده است."
+
+    c.execute("SELECT 1 FROM gift_code_redemptions WHERE code=? AND user_id=?", (code, user_id))
+    if c.fetchone():
+        conn.close()
+        return False, "❌ قبلاً این کد را استفاده کرده‌ای."
+
+    c.execute(
+        "INSERT INTO gift_code_redemptions (code, user_id, redeemed_at) VALUES (?, ?, ?)",
+        (code, user_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    c.execute("UPDATE gift_codes SET used_count = used_count + 1 WHERE code=?", (code,))
+    conn.commit()
+    conn.close()
+
+    add_currency(user_id, gift["reward_field"], gift["reward_amount"])
+    return True, f"🎉 کد هدیه فعال شد! +{gift['reward_amount']} {gift['reward_field']} گرفتی."
+
+
+# ============================================================
+#  مشاور هوشمند 🤖
+# ============================================================
+
+def get_smart_advice(user_id):
+    """بر اساس وضعیت واقعی کاربر و اقتصاد، چند پیشنهاد شخصی‌سازی‌شده تولید می‌کند."""
+    u = get_user(user_id)
+    tips = []
+
+    price = get_market_price()
+    if price < MARKET_BASE_PRICE * 0.9:
+        tips.append("📉 قیمت LIBER پایین‌تر از حد معمول است — الان زمان خوبی برای خریدن است.")
+    elif price > MARKET_BASE_PRICE * 1.2:
+        tips.append("📈 قیمت LIBER بالاست — اگر LIBER اضافه داری، شاید بفروشی سود کنی.")
+
+    if u["bank_deposit"] == 0 and u["coin"] > 500:
+        tips.append(f"🏦 {int(u['coin'])} Coin بدون استفاده داری؛ در بانک سپرده بذار تا سود {BANK_INTEREST_PERCENT}% بگیری.")
+
+    if not u["country_name"]:
+        tips.append("🌍 هنوز کشوری نساختی! ساختنش رایگانه و بهت جمعیت و بودجه اولیه می‌ده.")
+    elif u["country_pop"] > 0:
+        tips.append("💰 یادت نره هر روز مالیات کشورت رو جمع کنی، رایگان XP و Coin می‌گیری.")
+
+    research_info = get_research_info(user_id)
+    if research_info and u["coin"] >= research_info["cost_coin"]:
+        tips.append(f"🔬 می‌تونی همین الان تحقیق «{research_info['name']}» رو با {research_info['cost_coin']} Coin کامل کنی.")
+
+    if u["defense_level"] < 3:
+        tips.append("🛡 سطح دفاعت پایینه؛ ارتقاش بده تا کشورت امن‌تر بشه.")
+
+    football_power = get_total_power(user_id, "football")
+    basketball_power = get_total_power(user_id, "basketball")
+    if max(football_power, basketball_power) < 80:
+        tips.append("⚔ قدرت رقابتی‌ات هنوز کمه — چند تا مهارت ورزشی رو ارتقا بده تا تو مسابقه‌ها بیشتر ببری.")
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    if u["last_daily_reward"] != today:
+        tips.append("🎁 جایزه روزانه‌ات رو هنوز نگرفتی — رایگانه، از دستش نده!")
+    if u["last_daily_mission"] != today:
+        tips.append("🎯 مأموریت روزانه هم هنوز باز نشده، برو کاملش کن.")
+
+    if u["vip"] == "none":
+        tips.append("⭐ با فعال کردن اشتراک VIP، درآمد و XP بیشتری می‌گیری.")
+
+    if not tips:
+        tips.append("👍 وضعیتت خیلی خوبه! همینطور با مسابقه، صندوق و مأموریت روزانه پیش برو.")
+
+    return tips
+
+
 def join_match_queue(user_id, sport):
     """اگر حریفی در صف باشد بلافاصله مسابقه شبیه‌سازی می‌شود، وگرنه کاربر در صف انتظار قرار می‌گیرد."""
     conn = db()
@@ -1196,6 +1325,8 @@ def main_menu_keyboard(user_id=None):
         [InlineKeyboardButton("📦 بازار بازیکنان", callback_data="p2p_market"),
          InlineKeyboardButton("🎟 حدس قیمت", callback_data="prediction")],
         [InlineKeyboardButton("⚔ رقابت آنلاین", callback_data="competition")],
+        [InlineKeyboardButton("🤖 مشاور هوشمند", callback_data="smart_advisor"),
+         InlineKeyboardButton("🎁 کد هدیه", callback_data="gift_code")],
         [InlineKeyboardButton("❓ راهنمای کامل", callback_data="help"),
          InlineKeyboardButton("☎ پشتیبانی", callback_data="support")],
     ]
@@ -2276,6 +2407,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_keyboard())
 
+    # ---------------- مشاور هوشمند ----------------
+    elif data == "smart_advisor":
+        tips = get_smart_advice(user_id)
+        text = "🤖 <b>مشاور هوشمند LIBER</b>\n\nبر اساس وضعیت فعلی‌ات، این پیشنهادها رو دارم:\n\n" + "\n\n".join(
+            f"• {tip}" for tip in tips
+        )
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 تحلیل مجدد", callback_data="smart_advisor")],
+            [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back_main")],
+        ])
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+
+    # ---------------- کد هدیه ----------------
+    elif data == "gift_code":
+        context.user_data["awaiting_gift_code"] = True
+        text = (
+            "🎁 <b>کد هدیه</b>\n\n"
+            "کد هدیه‌ات را همینجا در چت تایپ و ارسال کن تا جایزه‌اش را دریافت کنی."
+        )
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_keyboard())
+
     else:
         placeholders = {
             "news": "📰 اخبار جهانی به‌زودی فعال می‌شود.",
@@ -2310,148 +2462,3 @@ async def build_admin_dashboard_text():
 
     days_left = get_tournament_info()
     top_competitor = f"{top_row['first_name']} ({top_row['rank_points']} امتیاز)" if top_row else "—"
-
-    text = (
-        "👑 <b>پنل مدیریت TITAN</b>\n"
-        "━━━━━━━━━━━━━━━\n"
-        f"🕒 زمان سرور: {now}\n"
-        f"👥 کل کاربران: {total_users}\n"
-        f"🚫 کاربران مسدود: {banned_users}\n"
-        f"⚠️ کاربران دارای اخطار: {warned_users}\n"
-        "━━━━━━━━━━━━━━━\n"
-        f"📈 قیمت بازار: {get_market_price()} Coin\n"
-        f"🪙 مجموع LIBER در اقتصاد: {round(total_liber,2)}\n"
-        f"💵 مجموع Coin در اقتصاد: {round(total_coin,2)}\n"
-        "━━━━━━━━━━━━━━━\n"
-        f"⚔ مجموع مسابقات انجام‌شده: {total_matches}\n"
-        f"⏳ کاربران در صف انتظار مسابقه: {queue_count}\n"
-        f"🥇 برترین رقابت‌گر: {top_competitor}\n"
-        f"🏆 تا پایان تورنمت فصلی: {days_left} روز"
-    )
-    return text
-
-
-async def show_admin_panel(query):
-    text = await build_admin_dashboard_text()
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 بروزرسانی", callback_data="admin_panel"),
-         InlineKeyboardButton("🏆 برگزاری فوری تورنمت", callback_data="admin_force_tournament")],
-        [InlineKeyboardButton("📢 پیام همگانی (/broadcast)", callback_data="admin_info_broadcast"),
-         InlineKeyboardButton("🚫 مسدودسازی (/ban)", callback_data="admin_info_ban")],
-        [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back_main")],
-    ])
-    await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
-
-
-# ============================================================
-#  دستورات ادمین (متنی)
-# ============================================================
-
-async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ شما دسترسی ادمین ندارید.")
-        return
-    text = await build_admin_dashboard_text()
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 بروزرسانی", callback_data="admin_panel"),
-         InlineKeyboardButton("🏆 برگزاری فوری تورنمت", callback_data="admin_force_tournament")],
-    ])
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
-
-
-async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ شما دسترسی ادمین ندارید.")
-        return
-    if not context.args:
-        await update.message.reply_text("استفاده: /ban USER_ID")
-        return
-    target_id = int(context.args[0])
-    set_field(target_id, "banned", 1)
-    await update.message.reply_text(f"🚫 کاربر {target_id} مسدود شد.")
-
-
-async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ شما دسترسی ادمین ندارید.")
-        return
-    if not context.args:
-        await update.message.reply_text("استفاده: /unban USER_ID")
-        return
-    target_id = int(context.args[0])
-    set_field(target_id, "banned", 0)
-    await update.message.reply_text(f"✅ کاربر {target_id} از مسدودی خارج شد.")
-
-
-async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ شما دسترسی ادمین ندارید.")
-        return
-    if not context.args:
-        await update.message.reply_text("استفاده: /broadcast متن پیام")
-        return
-    message_text = " ".join(context.args)
-    conn = db()
-    c = conn.cursor()
-    c.execute("SELECT user_id FROM users")
-    all_users = c.fetchall()
-    conn.close()
-    sent = 0
-    for row in all_users:
-        try:
-            await context.bot.send_message(row["user_id"], f"📢 {message_text}")
-            sent += 1
-        except Exception:
-            pass
-    await update.message.reply_text(f"✅ پیام برای {sent} کاربر ارسال شد.")
-
-
-async def setbio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if is_banned(user_id):
-        return
-    if not context.args:
-        await update.message.reply_text("استفاده: /setbio متن بیوگرافی تو\nمثال: /setbio عاشق اقتصاد و فوتبالم ⚽💰")
-        return
-    bio_text = " ".join(context.args)
-    if contains_banned_word(bio_text):
-        await update.message.reply_text("⚠️ این متن شامل الفاظ نامناسب است و ذخیره نشد.")
-        return
-    if len(bio_text) > 150:
-        bio_text = bio_text[:150]
-    set_field(user_id, "bio", bio_text)
-    await update.message.reply_text("✅ بیوگرافی شما بروزرسانی شد. از منوی «پروفایل من» می‌توانی آن را ببینی.")
-
-
-async def text_message_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """اول پیام پشتیبانی را بررسی می‌کند، سپس فیلتر فحش ساده را روی پیام‌های متنی کاربر اجرا می‌کند."""
-    if not update.message or not update.message.text:
-        return
-    user_id = update.effective_user.id
-    if is_banned(user_id):
-        return
-
-    # ---------------- پیام پشتیبانی ----------------
-    if context.user_data.get("awaiting_support"):
-        context.user_data["awaiting_support"] = False
-        u = get_user(user_id)
-        username_display = f"@{u['username']}" if u and u["username"] else "بدون نام کاربری"
-        forward_text = (
-            "📩 <b>پیام پشتیبانی جدید</b>\n\n"
-            f"👤 نام: {update.effective_user.first_name}\n"
-            f"🪪 نام کاربری: {username_display}\n"
-            f"🆔 آیدی: <code>{user_id}</code>\n\n"
-            f"✉️ متن پیام:\n{update.message.text}\n\n"
-            f"برای پاسخ: <code>/reply {user_id} متن پاسخ</code>"
-        )
-        sent_to_any = False
-        for admin_id in ADMIN_IDS:
-            try:
-                await context.bot.send_message(admin_id, forward_text, parse_mode=ParseMode.HTML)
-                sent_to_any = True
-            except Exception as e:
-                logger.warning(f"C
