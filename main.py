@@ -172,6 +172,58 @@ PREDICTION_WIN_MULTIPLIER = 1.8
 BANNED_WORDS = ["kosekhar", "fuckyou"]
 MAX_WARN_BEFORE_BAN = 5
 
+# ------------------------------------------------------------
+#  رقابت آنلاین (فوتبال / بسکتبال)
+# ------------------------------------------------------------
+SPORTS = {
+    "football": {
+        "title": "⚽ فوتبال",
+        "stats": {
+            "life": "❤️ جون",
+            "accuracy": "🎯 دقت",
+            "intensity": "🔥 شدت",
+            "shot": "🥅 شوت",
+            "technique": "🌀 تکنیک",
+            "physical": "💪 بدنی",
+        },
+    },
+    "basketball": {
+        "title": "🏀 بسکتبال",
+        "stats": {
+            "speed": "⚡ سرعت",
+            "accuracy": "🎯 دقت",
+            "press": "🧱 پرس",
+            "physical": "💪 بدنی",
+            "life": "❤️ جون",
+        },
+    },
+}
+
+STAT_UPGRADE_BASE_COST = 40
+STAT_UPGRADE_GROWTH = 1.35
+STAT_MAX_LEVEL = 50
+
+MATCH_ENTRY_FEE = 20          # هزینه ورود به هر مسابقه رنک (LIBER)
+MATCH_POT_FEE_PERCENT = 12    # کارمزد ربات از مجموع جایزه
+MATCH_POSSESSIONS = 5         # تعداد حمله در هر مسابقه
+
+RANK_WIN_POINTS = 15
+RANK_DRAW_POINTS = 6
+RANK_LOSS_POINTS = -5
+
+LEAGUE_TIERS = [
+    (0,     "🥉 مبتدی"),
+    (100,   "🥈 حرفه‌ای"),
+    (300,   "🥇 استاد"),
+    (700,   "🐉 اژدهای آزاد"),
+    (1500,  "🐲 اژدهای افسانه‌ای"),
+    (3000,  "🐉👑 اژدهای کامل افسانه‌ای"),
+    (6000,  "💎 لیبر لجند وان"),
+]
+
+TOURNAMENT_LENGTH_DAYS = 60   # هر ۲ ماه
+TOURNAMENT_REWARDS = {1: 700, 2: 500, 3: 300}   # LIBER
+
 
 # ============================================================
 #  دیتابیس
@@ -220,7 +272,22 @@ def init_db():
             chest_count INTEGER DEFAULT 0,
             research_level INTEGER DEFAULT 0,
             defense_level INTEGER DEFAULT 0,
-            achievements TEXT DEFAULT '[]'
+            achievements TEXT DEFAULT '[]',
+            bio TEXT DEFAULT '',
+            football_life INTEGER DEFAULT 10,
+            football_accuracy INTEGER DEFAULT 10,
+            football_intensity INTEGER DEFAULT 10,
+            football_shot INTEGER DEFAULT 10,
+            football_technique INTEGER DEFAULT 10,
+            football_physical INTEGER DEFAULT 10,
+            basketball_speed INTEGER DEFAULT 10,
+            basketball_accuracy INTEGER DEFAULT 10,
+            basketball_press INTEGER DEFAULT 10,
+            basketball_physical INTEGER DEFAULT 10,
+            basketball_life INTEGER DEFAULT 10,
+            rank_points INTEGER DEFAULT 0,
+            matches_played INTEGER DEFAULT 0,
+            matches_won INTEGER DEFAULT 0
         )
         """
     )
@@ -287,6 +354,44 @@ def init_db():
         )
         """
     )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS match_queue (
+            user_id INTEGER PRIMARY KEY,
+            sport TEXT,
+            joined_at TEXT
+        )
+        """
+    )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS matches (
+            match_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            player_id INTEGER,
+            opponent_id INTEGER,
+            sport TEXT,
+            player_score INTEGER,
+            opponent_score INTEGER,
+            result TEXT,
+            log TEXT,
+            created_at TEXT
+        )
+        """
+    )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tournament (
+            id INTEGER PRIMARY KEY,
+            started_at TEXT
+        )
+        """
+    )
+    c.execute("SELECT COUNT(*) as cnt FROM tournament")
+    if c.fetchone()["cnt"] == 0:
+        c.execute(
+            "INSERT INTO tournament (id, started_at) VALUES (1, ?)",
+            (datetime.now().strftime("%Y-%m-%d"),),
+        )
     c.execute("SELECT COUNT(*) as cnt FROM market")
     if c.fetchone()["cnt"] == 0:
         c.execute("INSERT INTO market (id, price) VALUES (1, ?)", (MARKET_BASE_PRICE,))
@@ -706,37 +811,264 @@ def contains_banned_word(text):
 
 
 # ============================================================
+#  رقابت آنلاین (فوتبال / بسکتبال)
+# ============================================================
+
+def get_stat_upgrade_cost(level):
+    return int(STAT_UPGRADE_BASE_COST * (STAT_UPGRADE_GROWTH ** level))
+
+
+def upgrade_stat(user_id, sport, stat_key):
+    field = f"{sport}_{stat_key}"
+    u = get_user(user_id)
+    level = u[field]
+    if level >= STAT_MAX_LEVEL:
+        return False, "🔒 این مهارت به حداکثر سطح رسیده."
+    cost = get_stat_upgrade_cost(level)
+    if u["coin"] < cost:
+        return False, f"❌ برای ارتقا به {cost} Coin نیاز داری."
+    add_currency(user_id, "coin", -cost)
+    set_field(user_id, field, level + 1)
+    return True, f"✅ مهارت ارتقا یافت! سطح جدید: {level+1} (هزینه: {cost} Coin)"
+
+
+def get_total_power(user_id, sport):
+    u = get_user(user_id)
+    stats = SPORTS[sport]["stats"].keys()
+    return sum(u[f"{sport}_{stat}"] for stat in stats)
+
+
+def get_league_tier_name(points):
+    name = LEAGUE_TIERS[0][1]
+    for threshold, tier_name in LEAGUE_TIERS:
+        if points >= threshold:
+            name = tier_name
+    return name
+
+
+def join_match_queue(user_id, sport):
+    """اگر حریفی در صف باشد بلافاصله مسابقه شبیه‌سازی می‌شود، وگرنه کاربر در صف انتظار قرار می‌گیرد."""
+    conn = db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM match_queue WHERE sport=? AND user_id != ? LIMIT 1", (sport, user_id))
+    opponent_row = c.fetchone()
+
+    if opponent_row:
+        c.execute("DELETE FROM match_queue WHERE user_id=?", (opponent_row["user_id"],))
+        conn.commit()
+        conn.close()
+        opponent_id = opponent_row["user_id"]
+        return "matched", opponent_id
+    else:
+        c.execute("DELETE FROM match_queue WHERE user_id=?", (user_id,))
+        c.execute(
+            "INSERT INTO match_queue (user_id, sport, joined_at) VALUES (?, ?, ?)",
+            (user_id, sport, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        conn.commit()
+        conn.close()
+        return "waiting", None
+
+
+def leave_match_queue(user_id):
+    conn = db()
+    c = conn.cursor()
+    c.execute("DELETE FROM match_queue WHERE user_id=?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def simulate_match(player_id, opponent_id, sport, vs_bot=False):
+    """شبیه‌سازی مسابقه حمله به حمله و برگرداندن گزارش کامل + نتیجه."""
+    player_power = get_total_power(player_id, sport)
+    if vs_bot:
+        opponent_power = max(20, player_power + random.randint(-15, 15))
+        opponent_name = "🤖 حریف هوش مصنوعی"
+    else:
+        opponent_power = get_total_power(opponent_id, sport)
+        opp_user = get_user(opponent_id)
+        opponent_name = opp_user["first_name"] or "حریف"
+
+    player_score = 0
+    opponent_score = 0
+    log_lines = []
+    attacker = "player"
+
+    for possession in range(1, MATCH_POSSESSIONS + 1):
+        if attacker == "player":
+            atk_power = player_power + random.randint(-10, 10)
+            def_power = opponent_power + random.randint(-10, 10)
+            atk_label = "شما"
+        else:
+            atk_power = opponent_power + random.randint(-10, 10)
+            def_power = player_power + random.randint(-10, 10)
+            atk_label = opponent_name
+
+        log_lines.append(f"🔵 حمله {possession}: {atk_label} توپ را ارسال کرد...")
+        if atk_power > def_power:
+            log_lines.append(f"⚽ گل شد! ({atk_power} در برابر {def_power})")
+            if attacker == "player":
+                player_score += 1
+            else:
+                opponent_score += 1
+        elif atk_power == def_power:
+            log_lines.append(f"⚔️ قدرت مساوی بود ({atk_power} = {def_power}) — دفاع در آخرین لحظه گل را گرفت.")
+        else:
+            log_lines.append(f"🛡 دفاع موفق بود ({def_power} در برابر {atk_power})")
+
+        attacker = "opponent" if attacker == "player" else "player"
+
+    if player_score == opponent_score:
+        log_lines.append("⏱ نتیجه مساوی شد — ضربات پنالتی تعیین‌کننده...")
+        if player_power + random.randint(0, 15) >= opponent_power + random.randint(0, 15):
+            player_score += 1
+        else:
+            opponent_score += 1
+
+    result = "win" if player_score > opponent_score else "loss"
+    return {
+        "player_score": player_score,
+        "opponent_score": opponent_score,
+        "result": result,
+        "log": log_lines,
+        "opponent_name": opponent_name,
+        "player_power": player_power,
+        "opponent_power": opponent_power,
+    }
+
+
+def apply_match_result(player_id, opponent_id, sport, match_data, vs_bot=False):
+    conn = db()
+    c = conn.cursor()
+    c.execute(
+        "INSERT INTO matches (player_id, opponent_id, sport, player_score, opponent_score, result, log, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            player_id,
+            opponent_id if not vs_bot else 0,
+            sport,
+            match_data["player_score"],
+            match_data["opponent_score"],
+            match_data["result"],
+            json.dumps(match_data["log"], ensure_ascii=False),
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    add_currency(player_id, "matches_played", 1)
+    if not vs_bot:
+        add_currency(opponent_id, "matches_played", 1)
+
+    pot = MATCH_ENTRY_FEE * (1 if vs_bot else 2)
+    fee = pot * MATCH_POT_FEE_PERCENT / 100
+    prize = round(pot - fee, 2)
+
+    if match_data["result"] == "win":
+        add_currency(player_id, "liber", prize)
+        add_currency(player_id, "matches_won", 1)
+        add_currency(player_id, "rank_points", RANK_WIN_POINTS)
+        if not vs_bot:
+            add_currency(opponent_id, "rank_points", RANK_LOSS_POINTS)
+    else:
+        if not vs_bot:
+            add_currency(opponent_id, "liber", prize)
+            add_currency(opponent_id, "matches_won", 1)
+            add_currency(opponent_id, "rank_points", RANK_WIN_POINTS)
+        add_currency(player_id, "rank_points", RANK_LOSS_POINTS)
+
+    # جلوگیری از منفی شدن امتیاز رنک
+    for uid in ([player_id] if vs_bot else [player_id, opponent_id]):
+        u2 = get_user(uid)
+        if u2["rank_points"] < 0:
+            set_field(uid, "rank_points", 0)
+
+
+def get_tournament_info():
+    conn = db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM tournament WHERE id=1")
+    row = c.fetchone()
+    conn.close()
+    started = datetime.strptime(row["started_at"], "%Y-%m-%d")
+    days_passed = (datetime.now() - started).days
+    days_left = max(0, TOURNAMENT_LENGTH_DAYS - days_passed)
+    return days_left
+
+
+async def maybe_resolve_tournament(bot):
+    days_left = get_tournament_info()
+    if days_left > 0:
+        return
+    await _resolve_tournament_now(bot)
+
+
+async def maybe_resolve_tournament_forced(bot):
+    await _resolve_tournament_now(bot)
+
+
+async def _resolve_tournament_now(bot):
+    conn = db()
+    c = conn.cursor()
+    c.execute("SELECT user_id, first_name, rank_points FROM users ORDER BY rank_points DESC LIMIT 3")
+    top3 = c.fetchall()
+    conn.close()
+
+    for i, row in enumerate(top3, start=1):
+        reward = TOURNAMENT_REWARDS.get(i, 0)
+        if reward:
+            add_currency(row["user_id"], "liber", reward)
+            try:
+                await bot.send_message(
+                    row["user_id"],
+                    f"🏆 تبریک! در تورنمت فصلی رتبه {i} را کسب کردی و {reward} LIBER جایزه گرفتی!",
+                )
+            except Exception:
+                pass
+
+    conn = db()
+    c = conn.cursor()
+    c.execute("UPDATE tournament SET started_at=? WHERE id=1", (datetime.now().strftime("%Y-%m-%d"),))
+    c.execute("UPDATE users SET rank_points=0")
+    conn.commit()
+    conn.close()
+
+
+# ============================================================
 #  کیبوردها
 # ============================================================
 
-def main_menu_keyboard():
+def main_menu_keyboard(user_id=None):
     buttons = [
-        [InlineKeyboardButton("👤 پروفایل", callback_data="profile"),
-         InlineKeyboardButton("🌍 کشور", callback_data="country"),
-         InlineKeyboardButton("💹 بازار", callback_data="market")],
-        [InlineKeyboardButton("💰 کیف پول", callback_data="wallet"),
-         InlineKeyboardButton("🏦 بانک", callback_data="bank"),
-         InlineKeyboardButton("🏪 فروشگاه", callback_data="shop")],
-        [InlineKeyboardButton("🎁 صندوق‌ها", callback_data="chests"),
-         InlineKeyboardButton("🎯 مأموریت‌ها", callback_data="missions"),
-         InlineKeyboardButton("🏆 لیگ", callback_data="league")],
-        [InlineKeyboardButton("🤝 اتحاد", callback_data="alliance"),
-         InlineKeyboardButton("📊 رتبه‌بندی", callback_data="ranking"),
-         InlineKeyboardButton("⭐ VIP", callback_data="vip")],
-        [InlineKeyboardButton("👥 دعوت دوستان", callback_data="invite"),
-         InlineKeyboardButton("🎁 جایزه روزانه", callback_data="daily"),
-         InlineKeyboardButton("📰 اخبار", callback_data="news")],
-        [InlineKeyboardButton("🎖 دستاوردها", callback_data="achievements"),
-         InlineKeyboardButton("🔬 تحقیقات", callback_data="research"),
-         InlineKeyboardButton("🛡 دفاع", callback_data="defense")],
-        [InlineKeyboardButton("🌌 اکتشاف", callback_data="exploration"),
-         InlineKeyboardButton("🕵 بازار سیاه", callback_data="black_market"),
-         InlineKeyboardButton("📆 فصل", callback_data="season")],
+        [InlineKeyboardButton("👤 پروفایل من", callback_data="profile"),
+         InlineKeyboardButton("🌍 امپراتوری من", callback_data="country"),
+         InlineKeyboardButton("💹 بازار زنده", callback_data="market")],
+        [InlineKeyboardButton("💰 گنجینه من", callback_data="wallet"),
+         InlineKeyboardButton("🏦 بانک مرکزی", callback_data="bank"),
+         InlineKeyboardButton("🏪 فروشگاه ویژه", callback_data="shop")],
+        [InlineKeyboardButton("🎁 صندوق شانس", callback_data="chests"),
+         InlineKeyboardButton("🎯 مأموریت روزانه", callback_data="missions"),
+         InlineKeyboardButton("🏆 لیگ من", callback_data="league")],
+        [InlineKeyboardButton("🤝 اتحاد قدرت", callback_data="alliance"),
+         InlineKeyboardButton("📊 برترین‌ها", callback_data="ranking"),
+         InlineKeyboardButton("⭐ عضویت VIP", callback_data="vip")],
+        [InlineKeyboardButton("👥 زیرمجموعه‌گیری", callback_data="invite"),
+         InlineKeyboardButton("🎁 جایزه ورود روزانه", callback_data="daily"),
+         InlineKeyboardButton("📰 اخبار جهان", callback_data="news")],
+        [InlineKeyboardButton("🎖 دستاوردهای من", callback_data="achievements"),
+         InlineKeyboardButton("🔬 آزمایشگاه فناوری", callback_data="research"),
+         InlineKeyboardButton("🛡 قدرت دفاعی", callback_data="defense")],
+        [InlineKeyboardButton("🌌 اکتشاف سرزمین", callback_data="exploration"),
+         InlineKeyboardButton("🕵 بازار سیاه امروز", callback_data="black_market"),
+         InlineKeyboardButton("📆 فصل بازی", callback_data="season")],
         [InlineKeyboardButton("📦 بازار بازیکنان", callback_data="p2p_market"),
-         InlineKeyboardButton("🎟 پیش‌بینی قیمت", callback_data="prediction")],
-        [InlineKeyboardButton("❓ راهنما", callback_data="help"),
+         InlineKeyboardButton("🎟 حدس قیمت", callback_data="prediction")],
+        [InlineKeyboardButton("⚔ رقابت آنلاین", callback_data="competition")],
+        [InlineKeyboardButton("❓ راهنمای کامل", callback_data="help"),
          InlineKeyboardButton("☎ پشتیبانی", callback_data="support")],
     ]
+    if user_id in ADMIN_IDS:
+        buttons.append([InlineKeyboardButton("👑 پنل مدیریت TITAN", callback_data="admin_panel")])
     return InlineKeyboardMarkup(buttons)
 
 
@@ -833,7 +1165,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_new:
         welcome += "\n\n🎉 چون تازه به LIBER پیوستی، ۱۰۰ LIBER و ۵۰۰ Coin هدیه گرفتی!"
 
-    await update.message.reply_text(welcome, parse_mode=ParseMode.HTML, reply_markup=main_menu_keyboard())
+    await update.message.reply_text(welcome, parse_mode=ParseMode.HTML, reply_markup=main_menu_keyboard(user_id))
 
 
 # ============================================================
@@ -860,6 +1192,7 @@ async def hourly_market_job(context: ContextTypes.DEFAULT_TYPE):
             logger.warning(f"Could not notify user {target_user_id}: {e}")
 
     maybe_reset_season()
+    await maybe_resolve_tournament(context.bot)
 
 
 # ============================================================
@@ -891,11 +1224,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "check_join":
         joined_ok = await check_force_join(update, context, user_id)
         if joined_ok:
-            await query.message.edit_text("✅ عضویت شما تایید شد! از منوی زیر استفاده کن:", reply_markup=main_menu_keyboard())
+            await query.message.edit_text("✅ عضویت شما تایید شد! از منوی زیر استفاده کن:", reply_markup=main_menu_keyboard(user_id))
         return
 
     if data == "back_main":
-        await query.message.edit_text("🌍 منوی اصلی LIBER:", reply_markup=main_menu_keyboard())
+        await query.message.edit_text("🌍 منوی اصلی LIBER:", reply_markup=main_menu_keyboard(user_id))
         return
 
     u = get_user(user_id)
@@ -903,19 +1236,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ---------------- پروفایل ----------------
     if data == "profile":
         league = get_league_name(u["xp"] + u["level"] * XP_PER_LEVEL)
+        comp_league = get_league_tier_name(u["rank_points"])
+        username_display = f"@{u['username']}" if u["username"] else "ثبت نشده"
+        bio_display = u["bio"] or "بیوگرافی ثبت نشده (با /setbio متن بنویس)"
         text = (
-            "👤 <b>پروفایل شما</b>\n\n"
-            f"🆔 آیدی: <code>{user_id}</code>\n"
+            "👤 <b>پروفایل شما</b>\n"
+            "━━━━━━━━━━━━━━━\n"
+            f"🪪 نام کاربری: {username_display}\n"
+            f"🆔 آیدی عددی: <code>{user_id}</code>\n"
             f"📛 نام: {u['first_name']}\n"
-            f"⭐ سطح: {u['level']}\n"
-            f"💎 XP: {u['xp']} / {u['level']*XP_PER_LEVEL}\n"
-            f"🏆 لیگ: {league}\n"
+            f"📝 بیو: {bio_display}\n"
+            "━━━━━━━━━━━━━━━\n"
+            f"⭐ سطح: {u['level']}  |  💎 XP: {u['xp']}/{u['level']*XP_PER_LEVEL}\n"
+            f"🏆 لیگ اقتصادی: {league}\n"
+            f"⚔ لیگ رقابتی: {comp_league} ({u['rank_points']} امتیاز)\n"
             f"🏅 مدال: {u['medal']}\n"
-            f"👑 VIP: {u['vip']}\n"
+            f"👑 اشتراک VIP: {u['vip'] if u['vip'] != 'none' else 'ندارد'}\n"
+            "━━━━━━━━━━━━━━━\n"
+            f"🪙 موجودی LIBER: {u['liber']}\n"
             f"🌍 کشور: {u['country_name'] or 'ثبت نشده'}\n"
-            f"👥 زیرمجموعه: {u['ref_count']} نفر\n"
-            f"📅 عضویت: {u['joined_at']}\n"
-            f"🔁 تعداد ورود: {u['login_count']}"
+            f"👥 زیرمجموعه‌ها: {u['ref_count']} نفر\n"
+            f"⚠️ اخطارها: {u['warn_count']}/{MAX_WARN_BEFORE_BAN}\n"
+            "━━━━━━━━━━━━━━━\n"
+            f"📅 تاریخ عضویت: {u['joined_at']}\n"
+            f"🔁 تعداد ورود به ربات: {u['login_count']}"
         )
         await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_keyboard())
 
@@ -1504,9 +1848,138 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         success, msg = place_prediction(user_id, direction)
         await query.message.edit_text(msg, reply_markup=back_keyboard("prediction"))
 
+    # ---------------- رقابت آنلاین ----------------
+    elif data == "competition":
+        comp_league = get_league_tier_name(u["rank_points"])
+        days_left = get_tournament_info()
+        text = (
+            "⚔ <b>رقابت آنلاین LIBER</b>\n\n"
+            f"⚔ لیگ رقابتی فعلی: {comp_league}\n"
+            f"📊 امتیاز رنک: {u['rank_points']}\n"
+            f"🎮 بازی‌ها: {u['matches_played']} | 🏆 برد: {u['matches_won']}\n"
+            f"🏆 تا پایان تورنمت فصلی: {days_left} روز\n"
+            f"🥇 جوایز تورنمت: نفر اول {TOURNAMENT_REWARDS[1]} LIBER، دوم {TOURNAMENT_REWARDS[2]}، سوم {TOURNAMENT_REWARDS[3]}\n\n"
+            "یک ورزش را انتخاب کن:"
+        )
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("⚽ فوتبال", callback_data="sport_football"),
+             InlineKeyboardButton("🏀 بسکتبال", callback_data="sport_basketball")],
+            [InlineKeyboardButton("❓ راهنمای رقابت", callback_data="competition_help")],
+            [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back_main")],
+        ])
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+
+    elif data == "competition_help":
+        text = (
+            "❓ <b>راهنمای رقابت آنلاین</b>\n\n"
+            "1️⃣ یک ورزش (فوتبال یا بسکتبال) انتخاب کن.\n"
+            "2️⃣ مهارت‌هایت را با Coin ارتقا بده — هرچه مجموع قدرت بالاتر باشد شانس بردت بیشتر می‌شود.\n"
+            "3️⃣ روی «شروع مسابقه» بزن. اگر حریف واقعی در انتظار باشد بلافاصله مسابقه شروع می‌شود؛ وگرنه در صف انتظار قرار می‌گیری.\n"
+            f"4️⃣ ورودی هر مسابقه {MATCH_ENTRY_FEE} LIBER است. برنده مجموع جایزه (منهای کارمزد {MATCH_POT_FEE_PERCENT}%) را می‌برد.\n"
+            f"5️⃣ در هر مسابقه {MATCH_POSSESSIONS} حمله رد و بدل می‌شود؛ در هر حمله قدرت حمله‌کننده با قدرت دفاع مقایسه می‌شود — قدرت بیشتر یعنی گل بیشتر. تساوی یعنی دفاع در آخرین لحظه گل را گرفته.\n"
+            "6️⃣ اگر نتیجه مساوی شود، ضربات پنالتی تعیین‌کننده است.\n"
+            "7️⃣ بردها امتیاز رنک می‌دهند، باخت‌ها کم می‌کنند. امتیاز رنک تعیین‌کننده لیگ رقابتی توست: مبتدی ← حرفه‌ای ← استاد ← اژدهای آزاد ← اژدهای افسانه‌ای ← اژدهای کامل افسانه‌ای ← لیبر لجند وان.\n"
+            "8️⃣ هر ۲ ماه یک‌بار تورنمت فصلی بسته می‌شود و نفرات برتر جایزه نقدی می‌گیرند."
+        )
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_keyboard("competition"))
+
+    elif data.startswith("sport_"):
+        sport = data.split("_", 1)[1]
+        sport_info = SPORTS[sport]
+        stats_lines = [
+            f"{label}: سطح {u[f'{sport}_{key}']}" for key, label in sport_info["stats"].items()
+        ]
+        total_power = get_total_power(user_id, sport)
+        text = (
+            f"{sport_info['title']} — <b>پنل مهارت‌ها</b>\n\n"
+            + "\n".join(stats_lines)
+            + f"\n\n🔋 مجموع قدرت: {total_power}"
+        )
+        stat_buttons = [
+            InlineKeyboardButton(f"⬆️ {label}", callback_data=f"upgrade_{sport}_{key}")
+            for key, label in sport_info["stats"].items()
+        ]
+        rows = [stat_buttons[i:i+2] for i in range(0, len(stat_buttons), 2)]
+        rows.append([InlineKeyboardButton("🎮 شروع مسابقه رنک", callback_data=f"match_start_{sport}")])
+        rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="competition")])
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
+
+    elif data.startswith("upgrade_"):
+        _, sport, stat_key = data.split("_", 2)
+        success, msg = upgrade_stat(user_id, sport, stat_key)
+        await query.message.edit_text(msg, reply_markup=back_keyboard(f"sport_{sport}"))
+
+    elif data.startswith("match_start_"):
+        sport = data.split("_", 2)[2]
+        if u["liber"] < MATCH_ENTRY_FEE:
+            await query.message.edit_text(
+                f"❌ برای شرکت در مسابقه به {MATCH_ENTRY_FEE} LIBER نیاز داری.",
+                reply_markup=back_keyboard(f"sport_{sport}"),
+            )
+            return
+
+        add_currency(user_id, "liber", -MATCH_ENTRY_FEE)
+        status, opponent_id = join_match_queue(user_id, sport)
+
+        if status == "waiting":
+            await query.message.edit_text(
+                f"⏳ در حال انتظار برای حریف...\n👤 نام شما: {u['first_name']}\n\n"
+                "به محض پیدا شدن حریف، نتیجه مسابقه برایت ارسال می‌شود.",
+                reply_markup=back_keyboard(f"sport_{sport}"),
+            )
+            return
+
+        # حریف واقعی پیدا شد (حریف قبلاً هزینه ورودی خودش را هنگام ورود به صف پرداخت کرده است)
+        match_data = simulate_match(user_id, opponent_id, sport, vs_bot=False)
+        apply_match_result(user_id, opponent_id, sport, match_data, vs_bot=False)
+
+        result_emoji = "🏆 بردی!" if match_data["result"] == "win" else "😔 باختی."
+        text = (
+            f"⚔ <b>نتیجه مسابقه {SPORTS[sport]['title']}</b>\n\n"
+            + "\n".join(match_data["log"])
+            + f"\n\n📊 نتیجه نهایی: شما {match_data['player_score']} — {match_data['opponent_score']} {match_data['opponent_name']}\n"
+            + f"🔋 قدرت شما: {match_data['player_power']} | قدرت حریف: {match_data['opponent_power']}\n\n"
+            + result_emoji
+        )
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_keyboard(f"sport_{sport}"))
+
+        try:
+            opp_result = "win" if match_data["result"] == "loss" else "loss"
+            opp_emoji = "🏆 بردی!" if opp_result == "win" else "😔 باختی."
+            await context.bot.send_message(
+                opponent_id,
+                f"⚔ مسابقه {SPORTS[sport]['title']} تمام شد!\n"
+                f"نتیجه: {match_data['opponent_score']} — {match_data['player_score']}\n{opp_emoji}",
+            )
+        except Exception:
+            pass
+
+    elif data == "match_cancel_queue":
+        leave_match_queue(user_id)
+        await query.message.edit_text("❌ از صف انتظار خارج شدی.", reply_markup=back_keyboard("competition"))
+
     # ---------------- پنل ادمین ----------------
     elif data == "admin_panel" and user_id in ADMIN_IDS:
         await show_admin_panel(query)
+
+    elif data == "admin_force_tournament" and user_id in ADMIN_IDS:
+        await maybe_resolve_tournament_forced(context.bot)
+        await query.message.edit_text("✅ تورنمت فصلی برگزار شد و جوایز ارسال شد.", reply_markup=back_keyboard("admin_panel"))
+
+    elif data == "admin_info_broadcast" and user_id in ADMIN_IDS:
+        await query.message.edit_text(
+            "📢 برای ارسال پیام همگانی از دستور زیر در چت استفاده کن:\n<code>/broadcast متن پیام</code>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=back_keyboard("admin_panel"),
+        )
+
+    elif data == "admin_info_ban" and user_id in ADMIN_IDS:
+        await query.message.edit_text(
+            "🚫 برای مسدود یا رفع مسدودی کاربر از دستورات زیر استفاده کن:\n"
+            "<code>/ban USER_ID</code>\n<code>/unban USER_ID</code>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=back_keyboard("admin_panel"),
+        )
 
     else:
         placeholders = {
@@ -1520,7 +1993,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text(text, reply_markup=back_keyboard())
 
 
-async def show_admin_panel(query):
+async def build_admin_dashboard_text():
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn = db()
     c = conn.cursor()
@@ -1528,16 +2001,50 @@ async def show_admin_panel(query):
     total_users = c.fetchone()["cnt"]
     c.execute("SELECT COUNT(*) as cnt FROM users WHERE banned=1")
     banned_users = c.fetchone()["cnt"]
+    c.execute("SELECT COALESCE(SUM(liber),0) as s FROM users")
+    total_liber = c.fetchone()["s"]
+    c.execute("SELECT COALESCE(SUM(coin),0) as s FROM users")
+    total_coin = c.fetchone()["s"]
+    c.execute("SELECT COUNT(*) as cnt FROM matches")
+    total_matches = c.fetchone()["cnt"]
+    c.execute("SELECT COUNT(*) as cnt FROM match_queue")
+    queue_count = c.fetchone()["cnt"]
+    c.execute("SELECT first_name, rank_points FROM users ORDER BY rank_points DESC LIMIT 1")
+    top_row = c.fetchone()
+    c.execute("SELECT COUNT(*) as cnt FROM users WHERE warn_count > 0")
+    warned_users = c.fetchone()["cnt"]
     conn.close()
+
+    days_left = get_tournament_info()
+    top_competitor = f"{top_row['first_name']} ({top_row['rank_points']} امتیاز)" if top_row else "—"
+
     text = (
-        "👑 <b>پنل مدیریت TITAN</b>\n\n"
+        "👑 <b>پنل مدیریت TITAN</b>\n"
+        "━━━━━━━━━━━━━━━\n"
         f"🕒 زمان سرور: {now}\n"
         f"👥 کل کاربران: {total_users}\n"
         f"🚫 کاربران مسدود: {banned_users}\n"
-        f"📈 قیمت بازار: {get_market_price()} Coin"
+        f"⚠️ کاربران دارای اخطار: {warned_users}\n"
+        "━━━━━━━━━━━━━━━\n"
+        f"📈 قیمت بازار: {get_market_price()} Coin\n"
+        f"🪙 مجموع LIBER در اقتصاد: {round(total_liber,2)}\n"
+        f"💵 مجموع Coin در اقتصاد: {round(total_coin,2)}\n"
+        "━━━━━━━━━━━━━━━\n"
+        f"⚔ مجموع مسابقات انجام‌شده: {total_matches}\n"
+        f"⏳ کاربران در صف انتظار مسابقه: {queue_count}\n"
+        f"🥇 برترین رقابت‌گر: {top_competitor}\n"
+        f"🏆 تا پایان تورنمت فصلی: {days_left} روز"
     )
+    return text
+
+
+async def show_admin_panel(query):
+    text = await build_admin_dashboard_text()
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 بروزرسانی", callback_data="admin_panel")],
+        [InlineKeyboardButton("🔄 بروزرسانی", callback_data="admin_panel"),
+         InlineKeyboardButton("🏆 برگزاری فوری تورنمت", callback_data="admin_force_tournament")],
+        [InlineKeyboardButton("📢 پیام همگانی (/broadcast)", callback_data="admin_info_broadcast"),
+         InlineKeyboardButton("🚫 مسدودسازی (/ban)", callback_data="admin_info_ban")],
         [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back_main")],
     ])
     await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
@@ -1552,19 +2059,11 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in ADMIN_IDS:
         await update.message.reply_text("⛔ شما دسترسی ادمین ندارید.")
         return
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn = db()
-    c = conn.cursor()
-    c.execute("SELECT COUNT(*) as cnt FROM users")
-    total_users = c.fetchone()["cnt"]
-    conn.close()
-    text = (
-        "👑 <b>پنل مدیریت TITAN</b>\n\n"
-        f"🕒 زمان سرور: {now}\n"
-        f"👥 کل کاربران: {total_users}\n"
-        f"📈 قیمت بازار: {get_market_price()} Coin"
-    )
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی", callback_data="admin_panel")]])
+    text = await build_admin_dashboard_text()
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 بروزرسانی", callback_data="admin_panel"),
+         InlineKeyboardButton("🏆 برگزاری فوری تورنمت", callback_data="admin_force_tournament")],
+    ])
     await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
 
 
@@ -1618,6 +2117,23 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ پیام برای {sent} کاربر ارسال شد.")
 
 
+async def setbio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if is_banned(user_id):
+        return
+    if not context.args:
+        await update.message.reply_text("استفاده: /setbio متن بیوگرافی تو\nمثال: /setbio عاشق اقتصاد و فوتبالم ⚽💰")
+        return
+    bio_text = " ".join(context.args)
+    if contains_banned_word(bio_text):
+        await update.message.reply_text("⚠️ این متن شامل الفاظ نامناسب است و ذخیره نشد.")
+        return
+    if len(bio_text) > 150:
+        bio_text = bio_text[:150]
+    set_field(user_id, "bio", bio_text)
+    await update.message.reply_text("✅ بیوگرافی شما بروزرسانی شد. از منوی «پروفایل من» می‌توانی آن را ببینی.")
+
+
 async def text_message_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """فیلتر فحش ساده روی پیام‌های متنی کاربر (خارج از دکمه‌ها)."""
     if not update.message or not update.message.text:
@@ -1655,6 +2171,7 @@ def main():
     app.add_handler(CommandHandler("ban", ban_command))
     app.add_handler(CommandHandler("unban", unban_command))
     app.add_handler(CommandHandler("broadcast", broadcast_command))
+    app.add_handler(CommandHandler("setbio", setbio_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_filter))
 
