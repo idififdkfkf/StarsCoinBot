@@ -55,14 +55,14 @@ MAX_LOAN_MULTIPLIER = 3         # سقف وام بر اساس سطح
 
 XP_PER_LEVEL = 100
 DAILY_MISSION_XP = 20
-DAILY_MISSION_LIBER = 15
+DAILY_MISSION_LIBER = 8   # سخت‌تر شد (قبلاً ۱۵)
 
 CHEST_TABLE = {
-    "free":      {"cost": {}, "rewards": [("coin", 50, 150), ("liber", 1, 5)]},
-    "bronze":    {"cost": {"coin": 300}, "rewards": [("coin", 100, 400), ("liber", 3, 10), ("xp", 10, 20)]},
-    "silver":    {"cost": {"coin": 800}, "rewards": [("liber", 10, 30), ("diamond", 1, 2), ("xp", 20, 40)]},
-    "gold":      {"cost": {"liber": 100}, "rewards": [("liber", 30, 80), ("diamond", 2, 5), ("medal", 1, 3)]},
-    "diamond":   {"cost": {"diamond": 20}, "rewards": [("liber", 80, 200), ("diamond", 5, 10), ("medal", 2, 5)]},
+    "free":      {"cost": {}, "rewards": [("coin", 40, 120), ("liber", 1, 3)]},
+    "bronze":    {"cost": {"coin": 350}, "rewards": [("coin", 90, 350), ("liber", 2, 7), ("xp", 8, 18)]},
+    "silver":    {"cost": {"coin": 900}, "rewards": [("liber", 6, 20), ("diamond", 1, 2), ("xp", 15, 35)]},
+    "gold":      {"cost": {"liber": 130}, "rewards": [("liber", 18, 55), ("diamond", 2, 4), ("medal", 1, 2)]},
+    "diamond":   {"cost": {"diamond": 25}, "rewards": [("liber", 50, 140), ("diamond", 4, 8), ("medal", 1, 4)]},
 }
 
 VIP_TIERS = {
@@ -109,6 +109,12 @@ STAR_LIBER_PACKS = {
 # ------------------------------------------------------------
 GIFT_CODE_MAX_USES_DEFAULT = 1
 
+# ------------------------------------------------------------
+#  برداشت TON
+# ------------------------------------------------------------
+MIN_WITHDRAW_LIBER = 2000
+WITHDRAW_FEE_PERCENT = 5   # کارمزد برداشت
+
 LEAGUE_THRESHOLDS = [
     (0, "🥉 برنز"),
     (500, "🥈 نقره"),
@@ -122,6 +128,17 @@ LEAGUE_THRESHOLDS = [
 SPAM_COOLDOWN_SECONDS = 1.0
 _last_action_time = {}
 _warn_count = {}
+
+# ------------------------------------------------------------
+#  سیستم هوشمند ضد تقلب
+# ------------------------------------------------------------
+CHEAT_ACTION_WINDOW_SECONDS = 10     # بازه زمانی بررسی
+CHEAT_ACTION_MAX_IN_WINDOW = 12      # بیش از این تعداد کلیک در بازه = مشکوک
+CHEAT_FLAG_BAN_THRESHOLD = 4         # بعد از این تعداد پرچم مشکوک، خودکار مسدود می‌شود
+SUSPICIOUS_LIBER_GAIN_THRESHOLD = 2000  # افزایش ناگهانی بیش از این مقدار در یک عملیات، بررسی می‌شود
+
+_action_log = {}      # user_id -> [timestamps]
+_cheat_flags = {}     # user_id -> count
 
 # ------------------------------------------------------------
 #  فروشگاه
@@ -239,11 +256,11 @@ SPORTS = {
 }
 
 STAT_UPGRADE_BASE_COST = 40
-STAT_UPGRADE_GROWTH = 1.35
+STAT_UPGRADE_GROWTH = 1.42   # هرچه سطح بالاتر، ارتقا سخت‌تر و پرهزینه‌تر می‌شود
 STAT_MAX_LEVEL = 50
 
 MATCH_ENTRY_FEE = 20          # هزینه ورود به هر مسابقه رنک (LIBER)
-MATCH_POT_FEE_PERCENT = 12    # کارمزد ربات از مجموع جایزه
+MATCH_POT_FEE_PERCENT = 18    # کارمزد ربات از مجموع جایزه (سخت‌تر شد، قبلاً ۱۲٪)
 MATCH_POSSESSIONS = 5         # تعداد حمله در هر مسابقه
 
 HARD_MATCH_ENTRY_FEE = 4000    # هزینه ورود مسابقه سخت (Coin)
@@ -454,6 +471,20 @@ def init_db():
         )
         """
     )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS withdrawal_requests (
+            request_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            amount_liber REAL,
+            fee_liber REAL,
+            ton_address TEXT,
+            status TEXT DEFAULT 'pending',
+            created_at TEXT,
+            processed_at TEXT
+        )
+        """
+    )
     c.execute("SELECT COUNT(*) as cnt FROM tournament")
     if c.fetchone()["cnt"] == 0:
         c.execute(
@@ -587,6 +618,57 @@ def anti_spam_check(user_id):
     _last_action_time[user_id] = now
     _warn_count[user_id] = 0
     return True, 0
+
+
+def check_click_rate_cheat(user_id):
+    """با یک پنجره زمانی متحرک، الگوی کلیک غیرطبیعی (اسکریپت/بات) را تشخیص می‌دهد.
+    خروجی: True اگر رفتار مشکوک تشخیص داده شد."""
+    now = time.time()
+    log = _action_log.setdefault(user_id, [])
+    log.append(now)
+    # فقط رویدادهای داخل بازه زمانی را نگه می‌داریم
+    cutoff = now - CHEAT_ACTION_WINDOW_SECONDS
+    while log and log[0] < cutoff:
+        log.pop(0)
+
+    if len(log) > CHEAT_ACTION_MAX_IN_WINDOW:
+        _cheat_flags[user_id] = _cheat_flags.get(user_id, 0) + 1
+        log.clear()
+        return True
+    return False
+
+
+async def flag_suspicious_activity(user_id, context, reason):
+    """یک پرچم تخلف برای کاربر ثبت می‌کند؛ در صورت عبور از حد مجاز، خودکار مسدود می‌شود."""
+    count = _cheat_flags.get(user_id, 0)
+    if count >= CHEAT_FLAG_BAN_THRESHOLD:
+        set_field(user_id, "banned", 1)
+        for admin_id in ADMIN_IDS:
+            try:
+                await context.bot.send_message(
+                    admin_id,
+                    f"🚨 <b>تشخیص خودکار تقلب</b>\n\nکاربر <code>{user_id}</code> به دلیل «{reason}» "
+                    f"و عبور از حد مجاز پرچم‌های مشکوک، به‌صورت خودکار مسدود شد.",
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception:
+                pass
+    elif count > 0:
+        for admin_id in ADMIN_IDS:
+            try:
+                await context.bot.send_message(
+                    admin_id,
+                    f"⚠️ <b>فعالیت مشکوک</b>\n\nکاربر <code>{user_id}</code>: {reason} "
+                    f"(پرچم {count}/{CHEAT_FLAG_BAN_THRESHOLD})",
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception:
+                pass
+
+
+def check_suspicious_liber_gain(user_id, amount, threshold=SUSPICIOUS_LIBER_GAIN_THRESHOLD):
+    """اگر مقدار یک تراکنش LIBER از حد مجاز بیشتر باشد، به‌عنوان مشکوک علامت می‌زند."""
+    return amount is not None and amount >= threshold
 
 
 # ============================================================
@@ -1070,6 +1152,132 @@ def get_smart_advice(user_id):
     return tips
 
 
+# ============================================================
+#  برداشت TON
+# ============================================================
+
+def create_withdraw_request(user_id, amount, ton_address):
+    u = get_user(user_id)
+    if amount < MIN_WITHDRAW_LIBER:
+        return False, f"❌ حداقل مبلغ برداشت {MIN_WITHDRAW_LIBER} LIBER است."
+    if u["liber"] < amount:
+        return False, "❌ موجودی LIBER کافی نیست."
+
+    fee = round(amount * WITHDRAW_FEE_PERCENT / 100, 2)
+    add_currency(user_id, "liber", -amount)  # مبلغ فوراً از حساب کسر می‌شود تا امانتی نزد سیستم بماند
+    conn = db()
+    c = conn.cursor()
+    c.execute(
+        "INSERT INTO withdrawal_requests (user_id, amount_liber, fee_liber, ton_address, created_at) VALUES (?, ?, ?, ?, ?)",
+        (user_id, amount, fee, ton_address, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    request_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    return True, request_id
+
+
+def list_user_withdrawals(user_id, limit=10):
+    conn = db()
+    c = conn.cursor()
+    c.execute(
+        "SELECT * FROM withdrawal_requests WHERE user_id=? ORDER BY request_id DESC LIMIT ?",
+        (user_id, limit),
+    )
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+def list_pending_withdrawals(limit=20):
+    conn = db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM withdrawal_requests WHERE status='pending' ORDER BY request_id ASC LIMIT ?", (limit,))
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+def approve_withdraw_request(request_id):
+    conn = db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM withdrawal_requests WHERE request_id=? AND status='pending'", (request_id,))
+    req = c.fetchone()
+    if not req:
+        conn.close()
+        return False, None
+    c.execute(
+        "UPDATE withdrawal_requests SET status='approved', processed_at=? WHERE request_id=?",
+        (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), request_id),
+    )
+    conn.commit()
+    conn.close()
+    return True, req
+
+
+def reject_withdraw_request(request_id):
+    conn = db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM withdrawal_requests WHERE request_id=? AND status='pending'", (request_id,))
+    req = c.fetchone()
+    if not req:
+        conn.close()
+        return False, None
+    c.execute(
+        "UPDATE withdrawal_requests SET status='rejected', processed_at=? WHERE request_id=?",
+        (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), request_id),
+    )
+    conn.commit()
+    conn.close()
+    # بازگرداندن مبلغ به کاربر چون درخواست رد شده
+    add_currency(req["user_id"], "liber", req["amount_liber"])
+    return True, req
+
+
+# ============================================================
+#  اخبار جهانی 📰
+# ============================================================
+
+def get_world_news():
+    """یک فید خبری زنده از رویدادهای واقعی درون بازی می‌سازد."""
+    lines = []
+
+    price = get_market_price()
+    lines.append(f"💹 قیمت لحظه‌ای LIBER: {price} Coin")
+
+    number, season_days_left = get_season_info()
+    lines.append(f"📆 فصل {number} فعلی — {season_days_left} روز تا پایان.")
+
+    tournament_days_left = get_tournament_info()
+    lines.append(f"🏆 {tournament_days_left} روز تا پایان تورنمت رقابتی فصلی.")
+
+    item = get_black_market_today()
+    lines.append(f"🕵 پیشنهاد ویژه بازار سیاه امروز: {item['title']}")
+
+    conn = db()
+    c = conn.cursor()
+    c.execute("SELECT first_name, liber FROM users ORDER BY liber DESC LIMIT 1")
+    richest = c.fetchone()
+    if richest:
+        lines.append(f"👑 ثروتمندترین بازیکن این لحظه: {richest['first_name']} با {richest['liber']} LIBER")
+
+    c.execute("SELECT first_name, rank_points FROM users ORDER BY rank_points DESC LIMIT 1")
+    top_fighter = c.fetchone()
+    if top_fighter and top_fighter["rank_points"] > 0:
+        lines.append(f"⚔ برترین رقابت‌گر این لحظه: {top_fighter['first_name']} با {top_fighter['rank_points']} امتیاز رنک")
+
+    c.execute("SELECT COUNT(*) as cnt FROM matches")
+    total_matches = c.fetchone()["cnt"]
+    lines.append(f"🎮 مجموع مسابقات برگزارشده تا الان: {total_matches}")
+
+    c.execute("SELECT COUNT(*) as cnt FROM users WHERE country_name != ''")
+    total_countries = c.fetchone()["cnt"]
+    lines.append(f"🌍 تعداد کشورهای ساخته‌شده در جهان LIBER: {total_countries}")
+
+    conn.close()
+    return lines
+
+
 def join_match_queue(user_id, sport):
     """اگر حریفی در صف باشد بلافاصله مسابقه شبیه‌سازی می‌شود، وگرنه کاربر در صف انتظار قرار می‌گیرد."""
     conn = db()
@@ -1295,11 +1503,50 @@ async def _resolve_tournament_now(bot):
     conn.close()
 
 
+def get_competition_leaderboard(limit=10):
+    conn = db()
+    c = conn.cursor()
+    c.execute(
+        "SELECT first_name, rank_points, matches_played, matches_won FROM users "
+        "WHERE rank_points > 0 ORDER BY rank_points DESC LIMIT ?",
+        (limit,),
+    )
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+def get_recent_matches(limit=5):
+    conn = db()
+    c = conn.cursor()
+    c.execute(
+        "SELECT m.*, u1.first_name as player_name, u2.first_name as opponent_name "
+        "FROM matches m "
+        "LEFT JOIN users u1 ON m.player_id = u1.user_id "
+        "LEFT JOIN users u2 ON m.opponent_id = u2.user_id "
+        "ORDER BY m.match_id DESC LIMIT ?",
+        (limit,),
+    )
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
 # ============================================================
 #  کیبوردها
 # ============================================================
 
 def main_menu_keyboard(user_id=None):
+    today = datetime.now().strftime("%Y-%m-%d")
+    daily_badge = ""
+    mission_badge = ""
+    u = get_user(user_id) if user_id else None
+    if u:
+        if u["last_daily_reward"] != today:
+            daily_badge = " 🔴"
+        if u["last_daily_mission"] != today:
+            mission_badge = " 🔴"
+
     buttons = [
         [InlineKeyboardButton("👤 پروفایل من", callback_data="profile"),
          InlineKeyboardButton("🌍 امپراتوری من", callback_data="country"),
@@ -1308,13 +1555,13 @@ def main_menu_keyboard(user_id=None):
          InlineKeyboardButton("🏦 بانک مرکزی", callback_data="bank"),
          InlineKeyboardButton("🏪 فروشگاه ویژه", callback_data="shop")],
         [InlineKeyboardButton("🎁 صندوق شانس", callback_data="chests"),
-         InlineKeyboardButton("🎯 مأموریت روزانه", callback_data="missions"),
+         InlineKeyboardButton(f"🎯 مأموریت روزانه{mission_badge}", callback_data="missions"),
          InlineKeyboardButton("🏆 لیگ من", callback_data="league")],
         [InlineKeyboardButton("🤝 اتحاد قدرت", callback_data="alliance"),
          InlineKeyboardButton("📊 برترین‌ها", callback_data="ranking"),
          InlineKeyboardButton("⭐ عضویت VIP", callback_data="vip")],
         [InlineKeyboardButton("👥 زیرمجموعه‌گیری", callback_data="invite"),
-         InlineKeyboardButton("🎁 جایزه ورود روزانه", callback_data="daily"),
+         InlineKeyboardButton(f"🎁 جایزه ورود روزانه{daily_badge}", callback_data="daily"),
          InlineKeyboardButton("📰 اخبار جهان", callback_data="news")],
         [InlineKeyboardButton("🎖 دستاوردهای من", callback_data="achievements"),
          InlineKeyboardButton("🔬 آزمایشگاه فناوری", callback_data="research"),
@@ -1324,14 +1571,16 @@ def main_menu_keyboard(user_id=None):
          InlineKeyboardButton("📆 فصل بازی", callback_data="season")],
         [InlineKeyboardButton("📦 بازار بازیکنان", callback_data="p2p_market"),
          InlineKeyboardButton("🎟 حدس قیمت", callback_data="prediction")],
-        [InlineKeyboardButton("⚔ رقابت آنلاین", callback_data="competition")],
+        [InlineKeyboardButton("⚔️ آوردگاه رقابت", callback_data="competition")],
         [InlineKeyboardButton("🤖 مشاور هوشمند", callback_data="smart_advisor"),
          InlineKeyboardButton("🎁 کد هدیه", callback_data="gift_code")],
         [InlineKeyboardButton("❓ راهنمای کامل", callback_data="help"),
          InlineKeyboardButton("☎ پشتیبانی", callback_data="support")],
     ]
     if user_id in ADMIN_IDS:
-        buttons.append([InlineKeyboardButton("👑 پنل مدیریت TITAN", callback_data="admin_panel")])
+        pending_count = len(list_pending_withdrawals())
+        admin_badge = f" 🔴{pending_count}" if pending_count else ""
+        buttons.append([InlineKeyboardButton(f"👑 پنل مدیریت TITAN{admin_badge}", callback_data="admin_panel")])
     return InlineKeyboardMarkup(buttons)
 
 
@@ -1480,6 +1729,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.commit()
             conn.close()
         await query.answer("⚠️ لطفاً کمی آرام‌تر! (ضد اسپم فعال شد)", show_alert=True)
+        return
+
+    # تشخیص هوشمند الگوی کلیک ربات‌گونه (فراتر از حد طبیعی یک انسان)
+    if check_click_rate_cheat(user_id):
+        await flag_suspicious_activity(user_id, context, "الگوی کلیک غیرطبیعی/اسکریپتی")
+        if is_banned(user_id):
+            await query.answer("🚫 حساب شما به دلیل فعالیت مشکوک مسدود شد.", show_alert=True)
+            return
+        await query.answer("⚠️ فعالیت غیرطبیعی تشخیص داده شد. کمی آرام‌تر پیش برو.", show_alert=True)
         return
 
     await query.answer()
@@ -2000,7 +2258,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if u["last_daily_reward"] == today:
             await query.message.edit_text("✅ جایزه امروزت را قبلاً گرفتی.", reply_markup=back_keyboard())
             return
-        reward_liber = random.randint(5, 30)
+        reward_liber = random.randint(3, 15)
         set_field(user_id, "last_daily_reward", today)
         add_currency(user_id, "liber", reward_liber)
         await query.message.edit_text(
@@ -2215,10 +2473,39 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("⚽ فوتبال", callback_data="sport_football"),
              InlineKeyboardButton("🏀 بسکتبال", callback_data="sport_basketball")],
+            [InlineKeyboardButton("🏅 رتبه‌بندی رقابتی", callback_data="competition_leaderboard"),
+             InlineKeyboardButton("🏟 مسابقات اخیر", callback_data="competition_recent")],
             [InlineKeyboardButton("❓ راهنمای رقابت", callback_data="competition_help")],
             [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back_main")],
         ])
         await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+
+    elif data == "competition_leaderboard":
+        rows = get_competition_leaderboard()
+        if not rows:
+            text = "🏅 <b>رتبه‌بندی رقابتی</b>\n\nهنوز کسی امتیاز رنک نگرفته — اولین نفر باش!"
+        else:
+            lines = [
+                f"{i+1}. {r['first_name']} — {r['rank_points']} امتیاز ({get_league_tier_name(r['rank_points'])}) | "
+                f"{r['matches_won']}/{r['matches_played']} برد"
+                for i, r in enumerate(rows)
+            ]
+            text = "🏅 <b>رتبه‌بندی رقابتی برتر</b>\n\n" + "\n".join(lines)
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_keyboard("competition"))
+
+    elif data == "competition_recent":
+        rows = get_recent_matches()
+        if not rows:
+            text = "🏟 <b>مسابقات اخیر</b>\n\nهنوز هیچ مسابقه‌ای برگزار نشده."
+        else:
+            lines = []
+            for r in rows:
+                opp_name = r["opponent_name"] if r["opponent_id"] != 0 else "🤖 هوش مصنوعی"
+                lines.append(
+                    f"⚔ {SPORTS[r['sport']]['title']} — {r['player_name']} {r['player_score']} - {r['opponent_score']} {opp_name}"
+                )
+            text = "🏟 <b>مسابقات اخیر</b>\n\n" + "\n".join(lines)
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_keyboard("competition"))
 
     elif data == "competition_help":
         text = (
@@ -2248,217 +2535,4 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             + f"\n\n🔋 مجموع قدرت: {total_power}"
         )
         stat_buttons = [
-            InlineKeyboardButton(f"⬆️ {label}", callback_data=f"upgrade_{sport}_{key}")
-            for key, label in sport_info["stats"].items()
-        ]
-        rows = [stat_buttons[i:i+2] for i in range(0, len(stat_buttons), 2)]
-        rows.append([InlineKeyboardButton("🎮 شروع مسابقه رنک", callback_data=f"match_start_{sport}")])
-        rows.append([InlineKeyboardButton("🔥 مسابقه سخت (پرمخاطره)", callback_data=f"match_hard_{sport}")])
-        rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="competition")])
-        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
-
-    elif data.startswith("upgrade_"):
-        _, sport, stat_key = data.split("_", 2)
-        success, msg = upgrade_stat(user_id, sport, stat_key)
-        await query.message.edit_text(msg, reply_markup=back_keyboard(f"sport_{sport}"))
-
-    elif data.startswith("match_start_"):
-        sport = data.split("_", 2)[2]
-        if u["liber"] < MATCH_ENTRY_FEE:
-            await query.message.edit_text(
-                f"❌ برای شرکت در مسابقه به {MATCH_ENTRY_FEE} LIBER نیاز داری.",
-                reply_markup=back_keyboard(f"sport_{sport}"),
-            )
-            return
-
-        add_currency(user_id, "liber", -MATCH_ENTRY_FEE)
-        status, opponent_id = join_match_queue(user_id, sport)
-
-        if status == "waiting":
-            # حریف واقعی آنلاین نبود؛ برای اینکه کاربر معطل نماند بلافاصله با هوش مصنوعی مسابقه می‌دهد
-            leave_match_queue(user_id)
-            match_data = simulate_match(user_id, None, sport, vs_bot=True)
-            apply_match_result(user_id, 0, sport, match_data, vs_bot=True)
-
-            result_emoji = "🏆 بردی!" if match_data["result"] == "win" else "😔 باختی."
-            text = (
-                f"⚔ <b>نتیجه مسابقه {SPORTS[sport]['title']} (هوش مصنوعی)</b>\n"
-                "حریف واقعی آنلاین نبود، مسابقه با ربات برگزار شد:\n\n"
-                + "\n".join(match_data["log"])
-                + f"\n\n📊 نتیجه نهایی: شما {match_data['player_score']} — {match_data['opponent_score']} {match_data['opponent_name']}\n"
-                + f"🔋 قدرت شما: {match_data['player_power']} | قدرت حریف: {match_data['opponent_power']}\n\n"
-                + result_emoji
-            )
-            await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_keyboard(f"sport_{sport}"))
-            return
-
-        # حریف واقعی پیدا شد (حریف قبلاً هزینه ورودی خودش را هنگام ورود به صف پرداخت کرده است)
-        match_data = simulate_match(user_id, opponent_id, sport, vs_bot=False)
-        apply_match_result(user_id, opponent_id, sport, match_data, vs_bot=False)
-
-        result_emoji = "🏆 بردی!" if match_data["result"] == "win" else "😔 باختی."
-        text = (
-            f"⚔ <b>نتیجه مسابقه {SPORTS[sport]['title']}</b>\n\n"
-            + "\n".join(match_data["log"])
-            + f"\n\n📊 نتیجه نهایی: شما {match_data['player_score']} — {match_data['opponent_score']} {match_data['opponent_name']}\n"
-            + f"🔋 قدرت شما: {match_data['player_power']} | قدرت حریف: {match_data['opponent_power']}\n\n"
-            + result_emoji
-        )
-        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_keyboard(f"sport_{sport}"))
-
-        try:
-            opp_result = "win" if match_data["result"] == "loss" else "loss"
-            opp_emoji = "🏆 بردی!" if opp_result == "win" else "😔 باختی."
-            await context.bot.send_message(
-                opponent_id,
-                f"⚔ مسابقه {SPORTS[sport]['title']} تمام شد!\n"
-                f"نتیجه: {match_data['opponent_score']} — {match_data['player_score']}\n{opp_emoji}",
-            )
-        except Exception:
-            pass
-
-    elif data.startswith("match_hard_"):
-        sport = data.split("_", 2)[2]
-        if u["coin"] < HARD_MATCH_ENTRY_FEE:
-            await query.message.edit_text(
-                f"❌ برای مسابقه سخت به {HARD_MATCH_ENTRY_FEE} Coin نیاز داری.",
-                reply_markup=back_keyboard(f"sport_{sport}"),
-            )
-            return
-
-        add_currency(user_id, "coin", -HARD_MATCH_ENTRY_FEE)
-        match_data = simulate_hard_match(user_id, sport)
-        add_currency(user_id, "matches_played", 1)
-
-        if match_data["result"] == "win":
-            add_currency(user_id, "coin", HARD_MATCH_REWARD)
-            add_currency(user_id, "matches_won", 1)
-            add_currency(user_id, "rank_points", RANK_WIN_POINTS)
-            result_emoji = f"🔥🏆 بردی! {HARD_MATCH_REWARD} Coin جایزه گرفتی!"
-        else:
-            u2 = get_user(user_id)
-            if u2["rank_points"] + RANK_LOSS_POINTS < 0:
-                set_field(user_id, "rank_points", 0)
-            else:
-                add_currency(user_id, "rank_points", RANK_LOSS_POINTS)
-            result_emoji = f"😔 باختی و {HARD_MATCH_ENTRY_FEE} Coin را از دست دادی. حریف سخت بود!"
-
-        text = (
-            f"🔥 <b>مسابقه سخت {SPORTS[sport]['title']}</b>\n\n"
-            + "\n".join(match_data["log"])
-            + f"\n\n📊 نتیجه نهایی: شما {match_data['player_score']} — {match_data['opponent_score']} {match_data['opponent_name']}\n"
-            + f"🔋 قدرت شما: {match_data['player_power']} | قدرت حریف: {match_data['opponent_power']}\n\n"
-            + result_emoji
-        )
-        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_keyboard(f"sport_{sport}"))
-
-    elif data == "match_cancel_queue":
-        leave_match_queue(user_id)
-        await query.message.edit_text("❌ از صف انتظار خارج شدی.", reply_markup=back_keyboard("competition"))
-
-    # ---------------- پنل ادمین ----------------
-    elif data == "admin_panel" and user_id in ADMIN_IDS:
-        await show_admin_panel(query)
-
-    elif data == "admin_force_tournament" and user_id in ADMIN_IDS:
-        await maybe_resolve_tournament_forced(context.bot)
-        await query.message.edit_text("✅ تورنمت فصلی برگزار شد و جوایز ارسال شد.", reply_markup=back_keyboard("admin_panel"))
-
-    elif data == "admin_info_broadcast" and user_id in ADMIN_IDS:
-        await query.message.edit_text(
-            "📢 برای ارسال پیام همگانی از دستور زیر در چت استفاده کن:\n<code>/broadcast متن پیام</code>",
-            parse_mode=ParseMode.HTML,
-            reply_markup=back_keyboard("admin_panel"),
-        )
-
-    elif data == "admin_info_ban" and user_id in ADMIN_IDS:
-        await query.message.edit_text(
-            "🚫 برای مسدود یا رفع مسدودی کاربر از دستورات زیر استفاده کن:\n"
-            "<code>/ban USER_ID</code>\n<code>/unban USER_ID</code>",
-            parse_mode=ParseMode.HTML,
-            reply_markup=back_keyboard("admin_panel"),
-        )
-
-    # ---------------- راهنما ----------------
-    elif data == "help":
-        text = (
-            "❓ <b>راهنمای کامل LIBER</b>\n\n"
-            "🌍 <b>امپراتوری من:</b> کشورت رو بساز، مالیات جمع کن، دفاع و فناوری‌ات رو ارتقا بده.\n"
-            "💹 <b>بازار زنده:</b> LIBER بخر و بفروش؛ قیمت هر ساعت خودش تغییر می‌کنه.\n"
-            "🏦 <b>بانک مرکزی:</b> سپرده بذار سود بگیر، یا وام بگیر.\n"
-            "🎁 <b>صندوق شانس:</b> با Coin/LIBER/Diamond صندوق باز کن و جایزه شانسی بگیر.\n"
-            "🎯 <b>مأموریت روزانه:</b> هر روز با یک کلیک XP و LIBER رایگان بگیر.\n"
-            "⚔ <b>رقابت آنلاین:</b> فوتبال یا بسکتبال انتخاب کن، مهارت‌هاتو ارتقا بده و رنک‌بازی کن.\n"
-            "⭐ <b>VIP:</b> با Diamond یا با تلگرام استارز اشتراک ویژه بگیر و مزایای بیشتر داشته باش.\n"
-            "🌟 <b>خرید با استارز:</b> از فروشگاه می‌تونی مستقیم با تلگرام استارز LIBER یا اشتراک بخری.\n"
-            "☎ <b>پشتیبانی:</b> هر مشکلی داشتی از دکمه پشتیبانی پیام بده، مستقیم برای ادمین ارسال می‌شه.\n\n"
-            "هر سوالی داشتی از پشتیبانی بپرس! 💬"
-        )
-        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_keyboard())
-
-    # ---------------- پشتیبانی ----------------
-    elif data == "support":
-        context.user_data["awaiting_support"] = True
-        text = (
-            "☎ <b>پشتیبانی LIBER</b>\n\n"
-            "پیام خود را همینجا در چت تایپ و ارسال کن؛ پیام شما مستقیماً برای ادمین ارسال می‌شود "
-            "و به‌زودی پاسخ داده می‌شود.\n\n"
-            "برای خرید اشتراک هم می‌تونی همینجا بنویسی، یا مستقیم از بخش ⭐ VIP اقدام کنی."
-        )
-        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_keyboard())
-
-    # ---------------- مشاور هوشمند ----------------
-    elif data == "smart_advisor":
-        tips = get_smart_advice(user_id)
-        text = "🤖 <b>مشاور هوشمند LIBER</b>\n\nبر اساس وضعیت فعلی‌ات، این پیشنهادها رو دارم:\n\n" + "\n\n".join(
-            f"• {tip}" for tip in tips
-        )
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 تحلیل مجدد", callback_data="smart_advisor")],
-            [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back_main")],
-        ])
-        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
-
-    # ---------------- کد هدیه ----------------
-    elif data == "gift_code":
-        context.user_data["awaiting_gift_code"] = True
-        text = (
-            "🎁 <b>کد هدیه</b>\n\n"
-            "کد هدیه‌ات را همینجا در چت تایپ و ارسال کن تا جایزه‌اش را دریافت کنی."
-        )
-        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_keyboard())
-
-    else:
-        placeholders = {
-            "news": "📰 اخبار جهانی به‌زودی فعال می‌شود.",
-            "withdraw": "📤 برداشت TON: این بخش نیازمند تایید ادمین است.",
-            "deposit": "📥 واریز: به‌زودی فعال می‌شود.",
-        }
-        text = placeholders.get(data, "🔧 این بخش هنوز در حال توسعه است.")
-        await query.message.edit_text(text, reply_markup=back_keyboard())
-
-
-async def build_admin_dashboard_text():
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn = db()
-    c = conn.cursor()
-    c.execute("SELECT COUNT(*) as cnt FROM users")
-    total_users = c.fetchone()["cnt"]
-    c.execute("SELECT COUNT(*) as cnt FROM users WHERE banned=1")
-    banned_users = c.fetchone()["cnt"]
-    c.execute("SELECT COALESCE(SUM(liber),0) as s FROM users")
-    total_liber = c.fetchone()["s"]
-    c.execute("SELECT COALESCE(SUM(coin),0) as s FROM users")
-    total_coin = c.fetchone()["s"]
-    c.execute("SELECT COUNT(*) as cnt FROM matches")
-    total_matches = c.fetchone()["cnt"]
-    c.execute("SELECT COUNT(*) as cnt FROM match_queue")
-    queue_count = c.fetchone()["cnt"]
-    c.execute("SELECT first_name, rank_points FROM users ORDER BY rank_points DESC LIMIT 1")
-    top_row = c.fetchone()
-    c.execute("SELECT COUNT(*) as cnt FROM users WHERE warn_count > 0")
-    warned_users = c.fetchone()["cnt"]
-    conn.close()
-
-    days_left = get_tournament_info()
-    top_competitor = f"{top_row['first_name']} ({top_row['rank_points']} امتیاز)" if top_row else "—"
+            InlineKeyboardButton(f"⬆️ {label}", callback_da
