@@ -1,2015 +1,661 @@
-ADMIN_ID = 6188951798
+"""
+LIBER — admin.py
+==================
+Separate admin-only control panel. Imports shared state and helpers from
+main.py (db, save_data, ADMIN_IDS, etc.) rather than duplicating them.
 
-async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+Nothing in this file is visible or reachable by non-admin users: every
+handler checks is_admin() first and silently (or politely) refuses
+otherwise. The admin reply-keyboard is only ever sent to an admin chat.
 
-    user = update.effective_user
+This file is imported lazily from main.py's register_handlers() to avoid
+a circular import at module load time — do not import main.py's
+register_handlers from here.
+"""
 
-    # فقط مدیر اصلی
-    if user.id != ADMIN_ID:
+from datetime import datetime
+
+from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram.ext import CommandHandler, MessageHandler, ContextTypes, filters, ApplicationHandlerStop
+
+from main import (
+    db,
+    save_data,
+    log_action,
+    u,
+    is_admin,
+    ADMIN_IDS,
+    MAX_WARNINGS,
+)
+
+
+# =====================================================================
+# ADMIN KEYBOARD (reply keyboard, not inline — matches the rest of the bot)
+# =====================================================================
+
+ADMIN_MENU = ReplyKeyboardMarkup(
+    [
+        ["📊 داشبورد", "👥 کاربران"],
+        ["💹 اقتصاد", "📤 درخواست‌های برداشت"],
+        ["📋 لاگ‌ها", "🚫 بن و اخطار"],
+        ["📢 پیام همگانی", "🎟 ساخت کد هدیه"],
+        ["📰 انتشار خبر", "🏆 برگزاری فوری تورنمنت"],
+        ["🌍 ارسال رویداد دستی", "🔙 خروج از پنل ادمین"],
+    ],
+    resize_keyboard=True,
+)
+
+
+async def _deny(update):
+    """Silently-ish refuses — no admin data or menu is ever shown to a non-admin."""
+    await update.message.reply_text("⛔ شما دسترسی ادمین ندارید.")
+
+
+# =====================================================================
+# /admin ENTRY POINT
+# =====================================================================
+
+async def admin_panel(update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_admin(user_id):
+        await _deny(update)
+        return
+    await update.message.reply_text(
+        "👑 پنل مدیریت LIBER\n\nفقط شما (ادمین) این منو رو می‌بینید.", reply_markup=ADMIN_MENU
+    )
+
+
+async def admin_exit(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    from main import MAIN_MENU
+    await update.message.reply_text("خارج شدی از پنل ادمین.", reply_markup=MAIN_MENU)
+
+
+# =====================================================================
+# DASHBOARD
+# =====================================================================
+
+async def dashboard(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
         return
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📊 داشبورد", callback_data="admin_dashboard")],
-        [InlineKeyboardButton("👥 کاربران", callback_data="admin_users")],
-        [InlineKeyboardButton("🪙 اقتصاد", callback_data="admin_economy")],
-        [InlineKeyboardButton("💸 برداشت‌ها", callback_data="admin_withdraw")],
-        [InlineKeyboardButton("🛒 فروشگاه", callback_data="admin_shop")],
-        [InlineKeyboardButton("🎮 بازی‌ها", callback_data="admin_games")],
-        [InlineKeyboardButton("🏛 مزایده", callback_data="admin_auction")],
-        [InlineKeyboardButton("📢 پیام همگانی", callback_data="admin_broadcast")],
-        [InlineKeyboardButton("📊 آمار", callback_data="admin_stats")],
-        [InlineKeyboardButton("⚙️ تنظیمات", callback_data="admin_settings")]
-    ])
+    total_users = len(db["users"])
+    banned_users = sum(1 for d in db["users"].values() if d["banned"])
+    warned_users = sum(1 for d in db["users"].values() if d["warn_count"] > 0)
+    total_liber = sum(d["liber"] for d in db["users"].values())
+    total_coin = sum(d["coin"] for d in db["users"].values())
+    pending_withdrawals = sum(1 for w in db["withdrawals"] if w["status"] == "pending")
+    total_clans = len(db["clans"])
+    top_rank = max(db["users"].values(), key=lambda d: d["rank_points"], default=None)
 
-    await update.message.reply_text(
-        "👑 پنل مدیریت Liber Coin",
-        reply_markup=keyboard
+    started = datetime.fromisoformat(db["tournament"]["started_at"])
+    days_passed = (datetime.utcnow() - started).days
+    days_left = max(0, db["tournament"]["length_days"] - days_passed)
+
+    text = (
+        "📊 داشبورد مدیریت LIBER\n"
+        "━━━━━━━━━━━━━━━\n"
+        f"🕒 زمان سرور (UTC): {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"👥 کل کاربران: {total_users}\n"
+        f"🚫 کاربران مسدود: {banned_users}\n"
+        f"⚠️ کاربران دارای اخطار: {warned_users}\n"
+        "━━━━━━━━━━━━━━━\n"
+        f"💹 قیمت لحظه‌ای بازار: {db['market']['price']} Coin\n"
+        f"🪙 مجموع LIBER در گردش: {total_liber:.2f}\n"
+        f"💵 مجموع Coin در گردش: {total_coin:.2f}\n"
+        "━━━━━━━━━━━━━━━\n"
+        f"👑 کلن‌های ثبت‌شده: {total_clans}\n"
+        f"📤 درخواست برداشت در انتظار: {pending_withdrawals}\n"
+        f"🏆 برترین رقابت‌گر: {top_rank['name'] if top_rank else '—'} "
+        f"({top_rank['rank_points'] if top_rank else 0} امتیاز)\n"
+        f"⏳ تا پایان تورنمنت فصلی: {days_left} روز"
     )
+    await update.message.reply_text(text)
 
 
-# ثبت هندلر
-app.add_handler(CommandHandler("admin", admin_panel))
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ContextTypes
+# =====================================================================
+# USERS
+# =====================================================================
 
-ADMIN_ID = 6188951798
+async def users_list(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    rows = list(db["users"].values())[-20:]
+    if not rows:
+        await update.message.reply_text("هنوز کاربری ثبت‌نام نکرده.")
+        return
+    text = "👥 آخرین ۲۰ کاربر\n\n"
+    for r in rows:
+        status = "🚫" if r["banned"] else ("⚠️" if r["warn_count"] > 0 else "✅")
+        text += (
+            f"{status} {r['name']} (@{r['username'] or '—'}) — ID:{r['id']} — "
+            f"سطح {r['level']} — {r['liber']:.0f} LIBER — اخطار {r['warn_count']}/{MAX_WARNINGS}\n"
+        )
+    text += "\nبرای جزئیات یک کاربر: /userinfo آیدی_عددی"
+    await update.message.reply_text(text)
 
 
-async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if update.effective_user.id != ADMIN_ID:
+async def user_info(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    if not context.args:
+        await update.message.reply_text("استفاده: /userinfo آیدی_عددی")
+        return
+    try:
+        target_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("آیدی نامعتبر است.")
+        return
+    d = u(target_id)
+    if not d:
+        await update.message.reply_text("کاربری با این آیدی پیدا نشد.")
         return
 
-    keyboard = InlineKeyboardMarkup([
-
-        [InlineKeyboardButton("📊 داشبورد", callback_data="dashboard")],
-
-        [
-            InlineKeyboardButton("👥 کاربران", callback_data="users"),
-            InlineKeyboardButton("💰 اقتصاد", callback_data="economy")
-        ],
-
-        [
-            InlineKeyboardButton("🪙 LIBER", callback_data="liber"),
-            InlineKeyboardButton("⭐ استارز", callback_data="stars")
-        ],
-
-        [
-            InlineKeyboardButton("💸 برداشت", callback_data="withdraw"),
-            InlineKeyboardButton("🏦 واریز", callback_data="deposit")
-        ],
-
-        [
-            InlineKeyboardButton("💎 اشتراک", callback_data="vip"),
-            InlineKeyboardButton("👥 زیرمجموعه", callback_data="ref")
-        ],
-
-        [
-            InlineKeyboardButton("🛒 فروشگاه", callback_data="shop"),
-            InlineKeyboardButton("🏛 مزایده", callback_data="auction")
-        ],
-
-        [
-            InlineKeyboardButton("🎮 بازی‌ها", callback_data="games"),
-            InlineKeyboardButton("🏆 تورنمنت", callback_data="tournament")
-        ],
-
-        [
-            InlineKeyboardButton("📈 آمار", callback_data="stats"),
-            InlineKeyboardButton("📋 گزارش", callback_data="logs")
-        ],
-
-        [
-            InlineKeyboardButton("📢 پیام همگانی", callback_data="broadcast")
-        ],
-
-        [
-            InlineKeyboardButton("🎁 کد هدیه", callback_data="gift"),
-            InlineKeyboardButton("🎟 هدیه روزانه", callback_data="daily")
-        ],
-
-        [
-            InlineKeyboardButton("📞 تیکت‌ها", callback_data="tickets"),
-            InlineKeyboardButton("🚫 کاربران بن", callback_data="banned")
-        ],
-
-        [
-            InlineKeyboardButton("⚙️ تنظیمات ربات", callback_data="settings")
-        ],
-
-        [
-            InlineKeyboardButton("💾 بکاپ", callback_data="backup"),
-            InlineKeyboardButton("♻️ بازیابی", callback_data="restore")
-        ],
-
-        [
-            InlineKeyboardButton("🔒 امنیت", callback_data="security")
-        ]
-
-    ])
-
     await update.message.reply_text(
-        "👑 پنل مدیریت Liber Coin V2",
-        reply_markup=keyboard
+f"""👤 جزئیات کاربر {target_id}
+
+نام: {d['name']}   یوزرنیم: @{d['username'] or '—'}
+بیو: {d['bio'] or '—'}
+⭐ سطح: {d['level']}   ✨ XP: {d['xp']}
+🪙 LIBER: {d['liber']:.2f}   💵 Coin: {d['coin']:.2f}   💎 Diamond: {d['diamond']}
+👑 اشتراک: {d['sub_tier'] or 'ندارد'}
+👥 کلن: {d['clan_id'] or '—'}   👥 زیرمجموعه: {d['ref_count']}
+⚔ امتیاز رقابتی: {d['rank_points']}   🎮 مسابقات: {d['matches_played']} (برد {d['matches_won']})
+⚠️ اخطار: {d['warn_count']}/{MAX_WARNINGS}   🚫 مسدود: {'بله' if d['banned'] else 'خیر'}
+📅 عضویت: {d['created'][:10]}
+
+/ban {target_id}   /unban {target_id}
+/warn {target_id} دلیل   /resetwarn {target_id}
+/addliber {target_id} مقدار   /removeliber {target_id} مقدار"""
     )
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ContextTypes
-
-ADMIN_ID = 6188951798
 
 
-async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def ban_cmd(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    if not context.args:
+        await update.message.reply_text("استفاده: /ban آیدی_عددی")
+        return
+    target = u(int(context.args[0])) if context.args[0].isdigit() else None
+    if not target:
+        await update.message.reply_text("کاربر پیدا نشد.")
+        return
+    target["banned"] = True
+    save_data()
+    log_action(update.effective_user.id, "ADMIN_BAN", str(target["id"]))
+    await update.message.reply_text(f"🚫 کاربر {target['id']} مسدود شد.")
+    try:
+        await context.bot.send_message(target["id"], "🚫 حساب شما توسط ادمین مسدود شد.")
+    except Exception:
+        pass
 
-    if update.effective_user.id != ADMIN_ID:
+
+async def unban_cmd(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    if not context.args:
+        await update.message.reply_text("استفاده: /unban آیدی_عددی")
+        return
+    target = u(int(context.args[0])) if context.args[0].isdigit() else None
+    if not target:
+        await update.message.reply_text("کاربر پیدا نشد.")
+        return
+    target["banned"] = False
+    target["warn_count"] = 0
+    save_data()
+    log_action(update.effective_user.id, "ADMIN_UNBAN", str(target["id"]))
+    await update.message.reply_text(f"✅ کاربر {target['id']} آزاد شد و اخطارهاش صفر شد.")
+    try:
+        await context.bot.send_message(target["id"], "✅ حساب شما توسط ادمین آزاد شد.")
+    except Exception:
+        pass
+
+
+async def warn_cmd(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text("استفاده: /warn آیدی_عددی دلیل")
+        return
+    target_id_str = context.args[0]
+    reason = " ".join(context.args[1:])
+    if not target_id_str.isdigit():
+        await update.message.reply_text("آیدی نامعتبر است.")
+        return
+    target = u(int(target_id_str))
+    if not target:
+        await update.message.reply_text("کاربر پیدا نشد.")
         return
 
-    keyboard = InlineKeyboardMarkup([
+    from main import warn_user
+    await warn_user(context, target["id"], reason)
+    await update.message.reply_text(f"⚠️ اخطار برای {target['id']} ثبت شد. ({target['warn_count']}/{MAX_WARNINGS})")
 
-        [InlineKeyboardButton("📊 داشبورد زنده", callback_data="dashboard")],
 
-        [
-            InlineKeyboardButton("👥 کاربران", callback_data="users"),
-            InlineKeyboardButton("🟢 آنلاین‌ها", callback_data="online")
-        ],
+async def resetwarn_cmd(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    if not context.args:
+        await update.message.reply_text("استفاده: /resetwarn آیدی_عددی")
+        return
+    target = u(int(context.args[0])) if context.args[0].isdigit() else None
+    if not target:
+        await update.message.reply_text("کاربر پیدا نشد.")
+        return
+    target["warn_count"] = 0
+    save_data()
+    await update.message.reply_text(f"✅ اخطارهای کاربر {target['id']} صفر شد.")
 
-        [
-            InlineKeyboardButton("🔎 جستجوی کاربر", callback_data="search"),
-            InlineKeyboardButton("📋 اطلاعات کاربر", callback_data="userinfo")
-        ],
 
-        [
-            InlineKeyboardButton("➕ افزودن LIBER", callback_data="add_liber"),
-            InlineKeyboardButton("➖ کم کردن LIBER", callback_data="remove_liber")
-        ],
+async def add_liber_cmd(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text("استفاده: /addliber آیدی_عددی مقدار")
+        return
+    target = u(int(context.args[0])) if context.args[0].isdigit() else None
+    if not target:
+        await update.message.reply_text("کاربر پیدا نشد.")
+        return
+    try:
+        amount = float(context.args[1])
+    except ValueError:
+        await update.message.reply_text("مقدار نامعتبر است.")
+        return
+    target["liber"] += amount
+    save_data()
+    log_action(update.effective_user.id, "ADMIN_ADD_LIBER", f"{target['id']} +{amount}")
+    await update.message.reply_text(f"✅ {amount} LIBER به کاربر {target['id']} اضافه شد.")
 
-        [
-            InlineKeyboardButton("⭐ افزودن استارز", callback_data="add_stars"),
-            InlineKeyboardButton("⭐ کم کردن استارز", callback_data="remove_stars")
-        ],
 
-        [
-            InlineKeyboardButton("💎 مدیریت اشتراک", callback_data="vip"),
-            InlineKeyboardButton("👥 زیرمجموعه", callback_data="ref")
-        ],
+async def remove_liber_cmd(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text("استفاده: /removeliber آیدی_عددی مقدار")
+        return
+    target = u(int(context.args[0])) if context.args[0].isdigit() else None
+    if not target:
+        await update.message.reply_text("کاربر پیدا نشد.")
+        return
+    try:
+        amount = float(context.args[1])
+    except ValueError:
+        await update.message.reply_text("مقدار نامعتبر است.")
+        return
+    target["liber"] = max(0, target["liber"] - amount)
+    save_data()
+    log_action(update.effective_user.id, "ADMIN_REMOVE_LIBER", f"{target['id']} -{amount}")
+    await update.message.reply_text(f"✅ {amount} LIBER از کاربر {target['id']} کم شد.")
 
-        [
-            InlineKeyboardButton("🪙 ارز LIBER", callback_data="coin"),
-            InlineKeyboardButton("📈 نوسان", callback_data="market")
-        ],
 
-        [
-            InlineKeyboardButton("💸 برداشت‌ها", callback_data="withdraw"),
-            InlineKeyboardButton("🏦 واریزی‌ها", callback_data="deposit")
-        ],
+# =====================================================================
+# ECONOMY
+# =====================================================================
 
-        [
-            InlineKeyboardButton("🏛 مزایده", callback_data="auction"),
-            InlineKeyboardButton("🛒 فروشگاه", callback_data="shop")
-        ],
-
-        [
-            InlineKeyboardButton("🎮 بازی‌ها", callback_data="games"),
-            InlineKeyboardButton("🏆 تورنمنت", callback_data="tournament")
-        ],
-
-        [
-            InlineKeyboardButton("🎁 هدیه روزانه", callback_data="daily"),
-            InlineKeyboardButton("🎫 کد هدیه", callback_data="gift")
-        ],
-
-        [
-            InlineKeyboardButton("📞 تیکت‌ها", callback_data="tickets"),
-            InlineKeyboardButton("📢 پیام همگانی", callback_data="broadcast")
-        ],
-
-        [
-            InlineKeyboardButton("🚫 بن", callback_data="ban"),
-            InlineKeyboardButton("✅ رفع بن", callback_data="unban")
-        ],
-
-        [
-            InlineKeyboardButton("⚠️ اخطار", callback_data="warn"),
-            InlineKeyboardButton("🗑 حذف اخطار", callback_data="clear_warn")
-        ],
-
-        [
-            InlineKeyboardButton("📊 آمار", callback_data="stats"),
-            InlineKeyboardButton("📋 گزارش‌ها", callback_data="logs")
-        ],
-
-        [
-            InlineKeyboardButton("💾 بکاپ", callback_data="backup"),
-            InlineKeyboardButton("♻️ بازیابی", callback_data="restore")
-        ],
-
-        [
-            InlineKeyboardButton("🔒 امنیت", callback_data="security"),
-            InlineKeyboardButton("⚙️ تنظیمات", callback_data="settings")
-        ],
-
-        [
-            InlineKeyboardButton("🔄 ریست کش", callback_data="cache"),
-            InlineKeyboardButton("📦 نسخه ربات", callback_data="version")
-        ]
-
-    ])
-
-    await update.message.reply_text(
-        "👑 پنل مدیریت Liber Coin V3",
-        reply_markup=keyboard
+async def economy_view(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    hist = db["market"]["history"][-15:]
+    text = f"💹 اقتصاد LIBER\n\nقیمت فعلی: {db['market']['price']} Coin\n\nتاریخچه اخیر:\n"
+    text += "\n".join(f"{h['price']} — {h['at'][:16]}" for h in hist) if hist else "داده‌ای نیست."
+    text += (
+        "\n\nبرای تنظیم دستی قیمت: /setprice مقدار\n"
+        "برای دیدن پیشنهادهای باز بازار کاربران: /p2p_admin"
     )
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ContextTypes
+    await update.message.reply_text(text)
 
-ADMIN_ID = 6188951798
 
-async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def set_price_cmd(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    if not context.args:
+        await update.message.reply_text("استفاده: /setprice مقدار")
+        return
+    try:
+        price = float(context.args[0])
+    except ValueError:
+        await update.message.reply_text("مقدار نامعتبر است.")
+        return
+    db["market"]["price"] = max(1, price)
+    db["market"]["updated"] = str(datetime.utcnow())
+    db["market"]["history"].append({"price": db["market"]["price"], "at": str(datetime.utcnow())})
+    save_data()
+    await update.message.reply_text(f"✅ قیمت بازار روی {price} تنظیم شد.")
 
-    if update.effective_user.id != ADMIN_ID:
+
+async def p2p_admin_view(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    offers = [o for o in db["p2p_offers"] if o["open"]]
+    if not offers:
+        await update.message.reply_text("پیشنهاد باز فعالی نیست.")
+        return
+    text = "📦 پیشنهادهای باز بازار کاربران\n\n"
+    for o in offers[-20:]:
+        text += f"#{o['id']} — فروشنده {o['seller']} — {o['amount']} LIBER به {o['price']} Coin\n"
+    await update.message.reply_text(text)
+
+
+# =====================================================================
+# WITHDRAWALS
+# =====================================================================
+
+async def withdrawals_admin_view(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    pending = [w for w in db["withdrawals"] if w["status"] == "pending"]
+    if not pending:
+        await update.message.reply_text("درخواست برداشت در انتظاری نیست.")
+        return
+    text = "📤 درخواست‌های برداشت در انتظار\n\n"
+    for w in pending[-15:]:
+        text += (
+            f"کاربر {w['user_id']} — {w['amount']:.2f} LIBER — آدرس: {w['wallet']}\n"
+            f"  /approve {w['user_id']}   /reject {w['user_id']}\n\n"
+        )
+    await update.message.reply_text(text)
+
+
+async def approve_cmd(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    if not context.args:
+        await update.message.reply_text("استفاده: /approve آیدی_عددی")
+        return
+    target_id = int(context.args[0]) if context.args[0].isdigit() else None
+    if target_id is None:
+        await update.message.reply_text("آیدی نامعتبر است.")
         return
 
-    keyboard = InlineKeyboardMarkup([
+    for w in db["withdrawals"]:
+        if w["user_id"] == target_id and w["status"] == "pending":
+            w["status"] = "approved"
+            save_data()
+            log_action(update.effective_user.id, "ADMIN_APPROVE_WITHDRAW", str(target_id))
+            await update.message.reply_text(
+                "✅ تایید شد. پرداخت واقعی TON باید توسط شما، دستی و خارج از ربات، به آدرس اعلام‌شده انجام شود."
+            )
+            try:
+                await context.bot.send_message(target_id, f"✅ درخواست برداشت {w['amount']:.2f} LIBER تایید شد.")
+            except Exception:
+                pass
+            return
+    await update.message.reply_text("درخواست در انتظاری برای این کاربر پیدا نشد.")
 
-        [InlineKeyboardButton("👑 داشبورد حرفه‌ای", callback_data="dashboard")],
 
-        [
-            InlineKeyboardButton("👥 کاربران", callback_data="users"),
-            InlineKeyboardButton("🟢 آنلاین‌ها", callback_data="online")
-        ],
-
-        [
-            InlineKeyboardButton("🔍 جستجوی کاربر", callback_data="search"),
-            InlineKeyboardButton("📄 پروفایل کاربر", callback_data="profile")
-        ],
-
-        [
-            InlineKeyboardButton("🪙 مدیریت LIBER", callback_data="liber"),
-            InlineKeyboardButton("⭐ مدیریت استارز", callback_data="stars")
-        ],
-
-        [
-            InlineKeyboardButton("💎 اشتراک‌ها", callback_data="vip"),
-            InlineKeyboardButton("👥 زیرمجموعه‌ها", callback_data="ref")
-        ],
-
-        [
-            InlineKeyboardButton("💸 برداشت‌ها", callback_data="withdraw"),
-            InlineKeyboardButton("🏦 واریزها", callback_data="deposit")
-        ],
-
-        [
-            InlineKeyboardButton("📈 نوسان ارز", callback_data="market"),
-            InlineKeyboardButton("💰 مالیات", callback_data="tax")
-        ],
-
-        [
-            InlineKeyboardButton("🏛 مزایده", callback_data="auction"),
-            InlineKeyboardButton("🛒 فروشگاه", callback_data="shop")
-        ],
-
-        [
-            InlineKeyboardButton("🎮 مدیریت بازی‌ها", callback_data="games"),
-            InlineKeyboardButton("🏆 تورنمنت", callback_data="tournament")
-        ],
-
-        [
-            InlineKeyboardButton("⚽ فوتبال", callback_data="football"),
-            InlineKeyboardButton("🏀 بسکتبال", callback_data="basketball")
-        ],
-
-        [
-            InlineKeyboardButton("🎁 هدیه روزانه", callback_data="daily"),
-            InlineKeyboardButton("🎫 کد هدیه", callback_data="gift")
-        ],
-
-        [
-            InlineKeyboardButton("📢 پیام همگانی", callback_data="broadcast"),
-            InlineKeyboardButton("📩 پیام خصوصی", callback_data="private")
-        ],
-
-        [
-            InlineKeyboardButton("📞 تیکت‌ها", callback_data="tickets"),
-            InlineKeyboardButton("❓ سوالات متداول", callback_data="faq")
-        ],
-
-        [
-            InlineKeyboardButton("🚫 بن", callback_data="ban"),
-            InlineKeyboardButton("✅ رفع بن", callback_data="unban")
-        ],
-
-        [
-            InlineKeyboardButton("⚠️ اخطار", callback_data="warn"),
-            InlineKeyboardButton("🧹 حذف اخطار", callback_data="clearwarn")
-        ],
-
-        [
-            InlineKeyboardButton("📊 آمار کامل", callback_data="stats"),
-            InlineKeyboardButton("📋 گزارش‌ها", callback_data="logs")
-        ],
-
-        [
-            InlineKeyboardButton("📂 فایل‌ها", callback_data="files"),
-            InlineKeyboardButton("🗄 دیتابیس", callback_data="database")
-        ],
-
-        [
-            InlineKeyboardButton("💾 بکاپ", callback_data="backup"),
-            InlineKeyboardButton("♻️ بازیابی", callback_data="restore")
-        ],
-
-        [
-            InlineKeyboardButton("🔐 امنیت", callback_data="security"),
-            InlineKeyboardButton("👮 مدیران", callback_data="admins")
-        ],
-
-        [
-            InlineKeyboardButton("⚙️ تنظیمات ربات", callback_data="settings"),
-            InlineKeyboardButton("🎨 مدیریت منو", callback_data="menu")
-        ],
-
-        [
-            InlineKeyboardButton("➕ ساخت دکمه", callback_data="create_button"),
-            InlineKeyboardButton("✏️ ویرایش دکمه", callback_data="edit_button")
-        ],
-
-        [
-            InlineKeyboardButton("🗑 حذف دکمه", callback_data="delete_button"),
-            InlineKeyboardButton("📦 نسخه ربات", callback_data="version")
-        ]
-
-    ])
-
-    await update.message.reply_text(
-        "👑 پنل مدیریت Liber Coin V4",
-        reply_markup=keyboard
-    )
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ContextTypes
-
-ADMIN_ID = 6188951798
-
-async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if update.effective_user.id != ADMIN_ID:
+async def reject_cmd(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    if not context.args:
+        await update.message.reply_text("استفاده: /reject آیدی_عددی")
+        return
+    target_id = int(context.args[0]) if context.args[0].isdigit() else None
+    if target_id is None:
+        await update.message.reply_text("آیدی نامعتبر است.")
         return
 
-    keyboard = InlineKeyboardMarkup([
-
-        [InlineKeyboardButton("👑 داشبورد هوشمند", callback_data="dashboard")],
-
-        [
-            InlineKeyboardButton("👥 کاربران", callback_data="users"),
-            InlineKeyboardButton("🟢 آنلاین‌ها", callback_data="online")
-        ],
-
-        [
-            InlineKeyboardButton("🆕 کاربران امروز", callback_data="today_users"),
-            InlineKeyboardButton("📈 رشد ربات", callback_data="growth")
-        ],
-
-        [
-            InlineKeyboardButton("🔍 جستجوی کاربر", callback_data="search"),
-            InlineKeyboardButton("📄 پروفایل کامل", callback_data="profile")
-        ],
-
-        [
-            InlineKeyboardButton("🪙 مدیریت LIBER", callback_data="liber"),
-            InlineKeyboardButton("⭐ مدیریت استارز", callback_data="stars")
-        ],
-
-        [
-            InlineKeyboardButton("💎 اشتراک‌ها", callback_data="vip"),
-            InlineKeyboardButton("👥 زیرمجموعه‌ها", callback_data="ref")
-        ],
-
-        [
-            InlineKeyboardButton("💸 برداشت TON", callback_data="withdraw"),
-            InlineKeyboardButton("🏦 سفارش‌ها", callback_data="orders")
-        ],
-
-        [
-            InlineKeyboardButton("📈 قیمت LIBER", callback_data="price"),
-            InlineKeyboardButton("📉 نوسان", callback_data="market")
-        ],
-
-        [
-            InlineKeyboardButton("💰 مالیات", callback_data="tax"),
-            InlineKeyboardButton("🏦 خزانه", callback_data="bank")
-        ],
-
-        [
-            InlineKeyboardButton("🏛 مزایده", callback_data="auction"),
-            InlineKeyboardButton("🛒 فروشگاه", callback_data="shop")
-        ],
-
-        [
-            InlineKeyboardButton("🎮 بازی‌ها", callback_data="games"),
-            InlineKeyboardButton("🏆 تورنمنت", callback_data="tournament")
-        ],
-
-        [
-            InlineKeyboardButton("⚽ فوتبال", callback_data="football"),
-            InlineKeyboardButton("🏀 بسکتبال", callback_data="basketball")
-        ],
-
-        [
-            InlineKeyboardButton("🎁 هدیه روزانه", callback_data="daily"),
-            InlineKeyboardButton("🎟 کد هدیه", callback_data="gift")
-        ],
-
-        [
-            InlineKeyboardButton("📢 پیام همگانی", callback_data="broadcast"),
-            InlineKeyboardButton("📨 پیام خصوصی", callback_data="private")
-        ],
-
-        [
-            InlineKeyboardButton("📞 تیکت‌ها", callback_data="tickets"),
-            InlineKeyboardButton("❓ سوالات", callback_data="faq")
-        ],
-
-        [
-            InlineKeyboardButton("🚫 بن", callback_data="ban"),
-            InlineKeyboardButton("✅ رفع بن", callback_data="unban")
-        ],
-
-        [
-            InlineKeyboardButton("⚠️ اخطار", callback_data="warn"),
-            InlineKeyboardButton("🧹 حذف اخطار", callback_data="clearwarn")
-        ],
-
-        [
-            InlineKeyboardButton("📊 آمار", callback_data="stats"),
-            InlineKeyboardButton("📋 گزارش", callback_data="logs")
-        ],
-
-        [
-            InlineKeyboardButton("📂 فایل‌ها", callback_data="files"),
-            InlineKeyboardButton("🗄 دیتابیس", callback_data="database")
-        ],
-
-        [
-            InlineKeyboardButton("➕ ساخت دکمه", callback_data="create_button"),
-            InlineKeyboardButton("✏️ ویرایش دکمه", callback_data="edit_button")
-        ],
-
-        [
-            InlineKeyboardButton("🗑 حذف دکمه", callback_data="delete_button"),
-            InlineKeyboardButton("📑 مدیریت منو", callback_data="menu")
-        ],
-
-        [
-            InlineKeyboardButton("👮 مدیران", callback_data="admins"),
-            InlineKeyboardButton("🔐 امنیت", callback_data="security")
-        ],
-
-        [
-            InlineKeyboardButton("💾 بکاپ", callback_data="backup"),
-            InlineKeyboardButton("♻️ بازیابی", callback_data="restore")
-        ],
-
-        [
-            InlineKeyboardButton("🧹 پاکسازی کش", callback_data="cache"),
-            InlineKeyboardButton("🔄 ریست ربات", callback_data="restart")
-        ],
-
-        [
-            InlineKeyboardButton("⚙️ تنظیمات", callback_data="settings"),
-            InlineKeyboardButton("📦 نسخه ربات", callback_data="version")
-        ]
-
-    ])
-
-    await update.message.reply_text(
-        "👑 پنل مدیریت Liber Coin V5",
-        reply_markup=keyboard
-    )
-    from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup
-)
-from telegram.ext import (
-    ContextTypes,
-    CommandHandler,
-    CallbackQueryHandler
-)
-
-# ==========================
-# Liber Coin Admin Panel V6
-# بخش اول
-# ==========================
-
-ADMIN_ID = 6188951798
-
-BOT_VERSION = "Liber Coin V6"
-
-TOTAL_USERS = 0
-ONLINE_USERS = 0
-TODAY_USERS = 0
-TOTAL_LIBER = 0
-TOTAL_STARS = 0
-PENDING_WITHDRAW = 0
-OPEN_TICKETS = 0
-ACTIVE_GAMES = 0
+    for w in db["withdrawals"]:
+        if w["user_id"] == target_id and w["status"] == "pending":
+            w["status"] = "rejected"
+            target = u(target_id)
+            if target:
+                target["liber"] += w["amount"]
+            save_data()
+            log_action(update.effective_user.id, "ADMIN_REJECT_WITHDRAW", str(target_id))
+            await update.message.reply_text("❌ رد شد و مبلغ به کاربر بازگردانده شد.")
+            try:
+                await context.bot.send_message(
+                    target_id, f"❌ درخواست برداشت شما رد شد و {w['amount']:.2f} LIBER بازگشت."
+                )
+            except Exception:
+                pass
+            return
+    await update.message.reply_text("درخواست در انتظاری برای این کاربر پیدا نشد.")
 
 
-async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# =====================================================================
+# LOGS
+# =====================================================================
 
-    if update.effective_user.id != ADMIN_ID:
+async def logs_view(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
         return
-
-    keyboard = InlineKeyboardMarkup([
-
-        [
-            InlineKeyboardButton(
-                "📊 داشبورد",
-                callback_data="dashboard"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "👥 کاربران",
-                callback_data="users"
-            ),
-            InlineKeyboardButton(
-                "🔎 جستجو",
-                callback_data="search"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🪙 اقتصاد",
-                callback_data="economy"
-            ),
-            InlineKeyboardButton(
-                "⭐ استارز",
-                callback_data="stars"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "💸 برداشت",
-                callback_data="withdraw"
-            ),
-            InlineKeyboardButton(
-                "🏦 سفارش‌ها",
-                callback_data="orders"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "💎 اشتراک",
-                callback_data="vip"
-            ),
-            InlineKeyboardButton(
-                "🛒 فروشگاه",
-                callback_data="shop"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🎮 بازی‌ها",
-                callback_data="games"
-            ),
-            InlineKeyboardButton(
-                "🏛 مزایده",
-                callback_data="auction"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📢 پیام همگانی",
-                callback_data="broadcast"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⚙️ تنظیمات",
-                callback_data="settings"
-            )
-        ]
-
-    ])
-
-    await update.message.reply_text(
-        "👑 پنل مدیریت Liber Coin",
-        reply_markup=keyboard
+    rows = db["logs"][-20:]
+    if not rows:
+        await update.message.reply_text("لاگی ثبت نشده.")
+        return
+    text = "📋 آخرین لاگ‌ها\n\n" + "\n".join(
+        f"[{r['at'][:16]}] {r['user_id']} — {r['action']} {r['detail']}" for r in rows
     )
-
-
-async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    query = update.callback_query
-
-    await query.answer()
-
-    keyboard = InlineKeyboardMarkup([
-
-        [
-            InlineKeyboardButton(
-                "🔄 بروزرسانی",
-                callback_data="dashboard"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⬅️ بازگشت",
-                callback_data="back_admin"
-            )
-        ]
-
-    ])
-
-    await query.edit_message_text(
-
-f"""
-👑 داشبورد مدیریتی
-
-━━━━━━━━━━━━━━
-
-🤖 نسخه
-{BOT_VERSION}
-
-━━━━━━━━━━━━━━
-
-👥 کل کاربران
-{TOTAL_USERS}
-
-🟢 کاربران آنلاین
-{ONLINE_USERS}
-
-🆕 کاربران امروز
-{TODAY_USERS}
-
-━━━━━━━━━━━━━━
-
-🪙 کل LIBER
-{TOTAL_LIBER}
-
-⭐ کل Stars
-{TOTAL_STARS}
-
-━━━━━━━━━━━━━━
-
-💸 برداشت‌های انتظار
-{PENDING_WITHDRAW}
-
-📞 تیکت‌های باز
-{OPEN_TICKETS}
-
-🎮 بازی‌های فعال
-{ACTIVE_GAMES}
-
-━━━━━━━━━━━━━━
-
-🟢 وضعیت ربات
-آنلاین
-
-━━━━━━━━━━━━━━
-""",
-
-        reply_markup=keyboard
-    )
-
-
-async def back_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    query = update.callback_query
-
-    await query.answer()
-
-    keyboard = InlineKeyboardMarkup([
-
-        [InlineKeyboardButton("📊 داشبورد", callback_data="dashboard")],
-
-        [
-            InlineKeyboardButton("👥 کاربران", callback_data="users"),
-            InlineKeyboardButton("🔎 جستجو", callback_data="search")
-        ],
-
-        [
-            InlineKeyboardButton("🪙 اقتصاد", callback_data="economy"),
-            InlineKeyboardButton("⭐ استارز", callback_data="stars")
-        ],
-
-        [
-            InlineKeyboardButton("💸 برداشت", callback_data="withdraw"),
-            InlineKeyboardButton("🏦 سفارش‌ها", callback_data="orders")
-        ],
-
-        [
-            InlineKeyboardButton("💎 اشتراک", callback_data="vip"),
-            InlineKeyboardButton("🛒 فروشگاه", callback_data="shop")
-        ],
-
-        [
-            InlineKeyboardButton("🎮 بازی‌ها", callback_data="games"),
-            InlineKeyboardButton("🏛 مزایده", callback_data="auction")
-        ],
-
-        [
-            InlineKeyboardButton("📢 پیام همگانی", callback_data="broadcast")
-        ],
-
-        [
-            InlineKeyboardButton("⚙️ تنظیمات", callback_data="settings")
-        ]
-
-    ])
-
-    await query.edit_message_text(
-        "👑 پنل مدیریت Liber Coin",
-        reply_markup=keyboard
-    )
-
-
-admin_handler = CommandHandler("admin", admin_panel)
-
-dashboard_handler = CallbackQueryHandler(
-    dashboard,
-    pattern="^dashboard$"
-)
-
-back_handler = CallbackQueryHandler(
-    back_admin,
-    pattern="^back_admin$"
-)
-# ==========================
-# Liber Coin Admin Panel V6
-# بخش دوم - مدیریت کاربران
-# ==========================
-
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
-USER_COUNT = 0
-BANNED_USERS = 0
-VIP_USERS = 0
-
-
-async def admin_users(update, context):
-
-    query = update.callback_query
-    await query.answer()
-
-    keyboard = InlineKeyboardMarkup([
-
-        [
-            InlineKeyboardButton("🔎 جستجوی کاربر", callback_data="search_user")
-        ],
-
-        [
-            InlineKeyboardButton("👤 اطلاعات کاربر", callback_data="user_info")
-        ],
-
-        [
-            InlineKeyboardButton("➕ افزودن LIBER", callback_data="add_liber")
-        ],
-
-        [
-            InlineKeyboardButton("➖ کم کردن LIBER", callback_data="remove_liber")
-        ],
-
-        [
-            InlineKeyboardButton("⭐ افزودن استارز", callback_data="add_star")
-        ],
-
-        [
-            InlineKeyboardButton("⭐ کم کردن استارز", callback_data="remove_star")
-        ],
-
-        [
-            InlineKeyboardButton("💎 فعال کردن اشتراک", callback_data="vip_on")
-        ],
-
-        [
-            InlineKeyboardButton("❌ حذف اشتراک", callback_data="vip_off")
-        ],
-
-        [
-            InlineKeyboardButton("🚫 بن کاربر", callback_data="ban")
-        ],
-
-        [
-            InlineKeyboardButton("✅ رفع بن", callback_data="unban")
-        ],
-
-        [
-            InlineKeyboardButton("⚠️ ثبت اخطار", callback_data="warn")
-        ],
-
-        [
-            InlineKeyboardButton("🧹 حذف اخطار", callback_data="clear_warn")
-        ],
-
-        [
-            InlineKeyboardButton("📩 پیام خصوصی", callback_data="private_message")
-        ],
-
-        [
-            InlineKeyboardButton("🗑 حذف حساب", callback_data="delete_user")
-        ],
-
-        [
-            InlineKeyboardButton("📜 تاریخچه فعالیت", callback_data="history")
-        ],
-
-        [
-            InlineKeyboardButton("⬅️ بازگشت", callback_data="back_admin")
-        ]
-
-    ])
-
-    await query.edit_message_text(
-f"""
-👥 مدیریت کاربران
-
-━━━━━━━━━━━━━━
-
-👥 کل کاربران : {USER_COUNT}
-
-💎 کاربران VIP : {VIP_USERS}
-
-🚫 کاربران بن شده : {BANNED_USERS}
-
-━━━━━━━━━━━━━━
-
-یکی از گزینه‌های زیر را انتخاب کنید.
-""",
-        reply_markup=keyboard
-    )
-
-
-users_handler = CallbackQueryHandler(
-    admin_users,
-    pattern="^users$"
-)
-# ==========================
-# Liber Coin Admin Panel V6
-# بخش سوم - مدیریت اقتصاد
-# ==========================
-
-LIBER_PRICE = 140
-MARKET_CHANGE = "+7%"
-TRANSFER_TAX = 5
-WITHDRAW_TAX = 3
-SHOP_STATUS = "🟢 فعال"
-
-
-async def economy_panel(update, context):
-
-    query = update.callback_query
-    await query.answer()
-
-    keyboard = InlineKeyboardMarkup([
-
-        [
-            InlineKeyboardButton(
-                "💵 قیمت LIBER",
-                callback_data="price"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📈 افزایش قیمت",
-                callback_data="price_up"
-            ),
-            InlineKeyboardButton(
-                "📉 کاهش قیمت",
-                callback_data="price_down"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📊 نوسان بازار",
-                callback_data="market"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "💰 مالیات انتقال",
-                callback_data="transfer_tax"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "💸 مالیات برداشت",
-                callback_data="withdraw_tax"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⭐ مدیریت استارز",
-                callback_data="stars"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🏦 خزانه",
-                callback_data="bank"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📦 موجودی فروشگاه",
-                callback_data="stock"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🛒 وضعیت فروشگاه",
-                callback_data="shop_status"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🎁 جایزه روزانه",
-                callback_data="daily_reward"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "👥 پاداش زیرمجموعه",
-                callback_data="ref_reward"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⬅️ بازگشت",
-                callback_data="back_admin"
-            )
-        ]
-
-    ])
-
-    await query.edit_message_text(
-
-f"""
-🪙 مدیریت اقتصاد Liber Coin
-
-━━━━━━━━━━━━━━
-
-💵 قیمت هر LIBER
-{LIBER_PRICE}
-
-📈 نوسان بازار
-{MARKET_CHANGE}
-
-💰 مالیات انتقال
-{TRANSFER_TAX}%
-
-💸 مالیات برداشت
-{WITHDRAW_TAX}%
-
-🛒 فروشگاه
-{SHOP_STATUS}
-
-━━━━━━━━━━━━━━
-
-یکی از گزینه‌های زیر را انتخاب کنید.
-""",
-
-        reply_markup=keyboard
-    )
-
-
-economy_handler = CallbackQueryHandler(
-    economy_panel,
-    pattern="^economy$"
-)
-# ==========================
-# Liber Coin Admin Panel V6
-# بخش چهارم - مدیریت برداشت‌ها
-# ==========================
-
-PENDING_WITHDRAW = 0
-SUCCESS_WITHDRAW = 0
-REJECT_WITHDRAW = 0
-MIN_WITHDRAW = 2000
-TON_RATE = 0.04
-
-
-async def withdraw_panel(update, context):
-
-    query = update.callback_query
-    await query.answer()
-
-    keyboard = InlineKeyboardMarkup([
-
-        [
-            InlineKeyboardButton(
-                "📋 درخواست‌های جدید",
-                callback_data="withdraw_list"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "✅ تایید برداشت",
-                callback_data="withdraw_accept"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "❌ رد برداشت",
-                callback_data="withdraw_reject"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🔍 جستجوی سفارش",
-                callback_data="withdraw_search"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📦 سفارش‌های انجام شده",
-                callback_data="withdraw_done"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "💰 حداقل برداشت",
-                callback_data="min_withdraw"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "💎 نرخ TON",
-                callback_data="ton_rate"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📊 آمار برداشت",
-                callback_data="withdraw_stats"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📨 ارسال کد پیگیری",
-                callback_data="tracking_code"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⚙️ تنظیمات برداشت",
-                callback_data="withdraw_setting"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⬅️ بازگشت",
-                callback_data="back_admin"
-            )
-        ]
-
-    ])
-
-    await query.edit_message_text(
-
-f"""
-💸 مدیریت برداشت‌ها
-
-━━━━━━━━━━━━━━
-
-📋 درخواست‌های جدید
-{PENDING_WITHDRAW}
-
-✅ برداشت‌های انجام شده
-{SUCCESS_WITHDRAW}
-
-❌ برداشت‌های رد شده
-{REJECT_WITHDRAW}
-
-━━━━━━━━━━━━━━
-
-💰 حداقل برداشت
-{MIN_WITHDRAW} LIBER
-
-💎 هر برداشت
-{TON_RATE} TON
-
-━━━━━━━━━━━━━━
-
-یکی از گزینه‌ها را انتخاب کنید.
-""",
-
-        reply_markup=keyboard
-    )
-
-
-withdraw_handler = CallbackQueryHandler(
-    withdraw_panel,
-    pattern="^withdraw$"
-)
-# ==========================
-# Liber Coin Admin Panel V6
-# بخش پنجم - مدیریت فروشگاه
-# ==========================
-
-SHOP_PRODUCTS = 0
-SHOP_ENABLE = "🟢 فعال"
-SHOP_ORDERS = 0
-
-
-async def shop_panel(update, context):
-
-    query = update.callback_query
-    await query.answer()
-
-    keyboard = InlineKeyboardMarkup([
-
-        [
-            InlineKeyboardButton(
-                "➕ افزودن محصول",
-                callback_data="shop_add"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "✏️ ویرایش محصول",
-                callback_data="shop_edit"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🗑 حذف محصول",
-                callback_data="shop_delete"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📦 لیست محصولات",
-                callback_data="shop_list"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "💎 اشتراک‌ها",
-                callback_data="shop_vip"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⭐ استارز",
-                callback_data="shop_stars"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🪙 بسته‌های LIBER",
-                callback_data="shop_liber"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🎁 کد هدیه",
-                callback_data="shop_gift"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "💰 سفارش‌ها",
-                callback_data="shop_orders"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📊 آمار فروش",
-                callback_data="shop_stats"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🟢 فعال",
-                callback_data="shop_on"
-            ),
-            InlineKeyboardButton(
-                "🔴 غیرفعال",
-                callback_data="shop_off"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⬅️ بازگشت",
-                callback_data="back_admin"
-            )
-        ]
-
-    ])
-
-    await query.edit_message_text(
-
-f"""
-🛒 مدیریت فروشگاه
-
-━━━━━━━━━━━━━━
-
-📦 تعداد محصولات
-{SHOP_PRODUCTS}
-
-💰 سفارش‌های امروز
-{SHOP_ORDERS}
-
-🟢 وضعیت فروشگاه
-{SHOP_ENABLE}
-
-━━━━━━━━━━━━━━
-
-مدیریت کامل فروشگاه
-Liber Coin
-""",
-
-        reply_markup=keyboard
-    )
-
-
-shop_handler = CallbackQueryHandler(
-    shop_panel,
-    pattern="^shop$"
-)
-# ==========================
-# Liber Coin Admin Panel V6
-# بخش ششم - مدیریت اشتراک‌ها
-# ==========================
-
-VIP_USERS = 0
-PREMIUM_USERS = 0
-LIBER_USERS = 0
-EXCLUSIVE_USERS = 0
-
-
-async def vip_panel(update, context):
-
-    query = update.callback_query
-    await query.answer()
-
-    keyboard = InlineKeyboardMarkup([
-
-        [
-            InlineKeyboardButton(
-                "➕ فعال کردن اشتراک",
-                callback_data="vip_add"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "❌ حذف اشتراک",
-                callback_data="vip_remove"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "💎 اشتراک Premium",
-                callback_data="premium_manage"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "👑 Liber Premium",
-                callback_data="liber_manage"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🔥 Exclusive",
-                callback_data="exclusive_manage"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "💰 تغییر قیمت اشتراک",
-                callback_data="vip_price"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📅 تغییر مدت اشتراک",
-                callback_data="vip_time"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📋 لیست کاربران VIP",
-                callback_data="vip_list"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🔍 جستجوی اشتراک",
-                callback_data="vip_search"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📊 آمار اشتراک‌ها",
-                callback_data="vip_stats"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📢 پیام به کاربران VIP",
-                callback_data="vip_message"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⬅️ بازگشت",
-                callback_data="back_admin"
-            )
-        ]
-
-    ])
-
-    await query.edit_message_text(
-
-f"""
-💎 مدیریت اشتراک‌ها
-
-━━━━━━━━━━━━━━
-
-👤 کل کاربران VIP
-{VIP_USERS}
-
-⭐ Premium
-{PREMIUM_USERS}
-
-👑 Liber Premium
-{LIBER_USERS}
-
-🔥 Exclusive
-{EXCLUSIVE_USERS}
-
-━━━━━━━━━━━━━━
-
-مدیریت کامل اشتراک‌ها
-Liber Coin
-""",
-
-        reply_markup=keyboard
-    )
-
-
-vip_handler = CallbackQueryHandler(
-    vip_panel,
-    pattern="^vip$"
-)
-# ==========================
-# Liber Coin Admin Panel V6
-# بخش هفتم - مدیریت بازی‌ها
-# ==========================
-
-FOOTBALL_STATUS = "🟢 فعال"
-BASKETBALL_STATUS = "🟢 فعال"
-TOURNAMENT_STATUS = "🟢 فعال"
-
-TOTAL_MATCHES = 0
-ONLINE_MATCHES = 0
-TOURNAMENTS = 0
-
-
-async def games_panel(update, context):
-
-    query = update.callback_query
-    await query.answer()
-
-    keyboard = InlineKeyboardMarkup([
-
-        [
-            InlineKeyboardButton(
-                "⚽ مدیریت فوتبال",
-                callback_data="football_panel"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🏀 مدیریت بسکتبال",
-                callback_data="basketball_panel"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🏆 مدیریت تورنمنت",
-                callback_data="tournament_panel"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🎖 مدیریت رنک‌ها",
-                callback_data="rank_panel"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🪙 هزینه ورود بازی",
-                callback_data="game_price"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🎁 جایزه برد",
-                callback_data="game_reward"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📈 قدرت بازیکنان",
-                callback_data="player_power"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📊 آمار مسابقات",
-                callback_data="game_stats"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🟢 فعال کردن بازی",
-                callback_data="game_enable"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🔴 غیرفعال کردن بازی",
-                callback_data="game_disable"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📢 پیام به بازیکنان",
-                callback_data="game_message"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⬅️ بازگشت",
-                callback_data="back_admin"
-            )
-        ]
-
-    ])
-
-    await query.edit_message_text(
-
-f"""
-🎮 مدیریت بازی‌ها
-
-━━━━━━━━━━━━━━
-
-⚽ فوتبال
-{FOOTBALL_STATUS}
-
-🏀 بسکتبال
-{BASKETBALL_STATUS}
-
-🏆 تورنمنت
-{TOURNAMENT_STATUS}
-
-━━━━━━━━━━━━━━
-
-🎮 کل مسابقات
-{TOTAL_MATCHES}
-
-🟢 مسابقات آنلاین
-{ONLINE_MATCHES}
-
-🏆 تورنمنت‌های فعال
-{TOURNAMENTS}
-
-━━━━━━━━━━━━━━
-
-پنل مدیریت بازی‌های Liber Coin
-""",
-
-        reply_markup=keyboard
-    )
-
-
-games_handler = CallbackQueryHandler(
-    games_panel,
-    pattern="^games$"
-)
-# ==========================
-# Liber Coin Admin Panel V6
-# بخش هشتم - مدیریت مزایده
-# ==========================
-
-ACTIVE_AUCTIONS = 0
-FINISHED_AUCTIONS = 0
-TOTAL_BIDS = 0
-TOTAL_VOLUME = 0
-
-
-async def auction_panel(update, context):
-
-    query = update.callback_query
-    await query.answer()
-
-    keyboard = InlineKeyboardMarkup([
-
-        [
-            InlineKeyboardButton(
-                "➕ ایجاد مزایده",
-                callback_data="auction_create"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📋 مزایده‌های فعال",
-                callback_data="auction_active"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🏆 پایان مزایده",
-                callback_data="auction_finish"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "✏️ ویرایش مزایده",
-                callback_data="auction_edit"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🗑 حذف مزایده",
-                callback_data="auction_delete"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "👑 انتخاب برنده",
-                callback_data="auction_winner"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🪙 مزایده LIBER",
-                callback_data="auction_liber"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⭐ مزایده Stars",
-                callback_data="auction_star"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📊 آمار مزایده",
-                callback_data="auction_stats"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📜 تاریخچه",
-                callback_data="auction_history"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📢 پیام به شرکت‌کنندگان",
-                callback_data="auction_message"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🟢 فعال",
-                callback_data="auction_enable"
-            ),
-            InlineKeyboardButton(
-                "🔴 غیرفعال",
-                callback_data="auction_disable"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⬅️ بازگشت",
-                callback_data="back_admin"
-            )
-        ]
-
-    ])
-
-    await query.edit_message_text(
-
-f"""
-🏛 مدیریت مزایده
-
-━━━━━━━━━━━━━━
-
-🏛 مزایده فعال
-{ACTIVE_AUCTIONS}
-
-🏁 مزایده پایان یافته
-{FINISHED_AUCTIONS}
-
-📈 تعداد پیشنهادها
-{TOTAL_BIDS}
-
-🪙 حجم معاملات
-{TOTAL_VOLUME}
-
-━━━━━━━━━━━━━━
-
-پنل مدیریت مزایده Liber Coin
-""",
-
-        reply_markup=keyboard
-    )
-
-
-auction_handler = CallbackQueryHandler(
-    auction_panel,
-    pattern="^auction$"
-)
-# ==========================
-# Liber Coin Admin Panel V6
-# بخش نهم - مدیریت پیام‌ها و پشتیبانی
-# ==========================
-
-OPEN_TICKETS = 0
-CLOSED_TICKETS = 0
-BROADCAST_COUNT = 0
-PRIVATE_MESSAGES = 0
-
-
-async def support_panel(update, context):
-
-    query = update.callback_query
-    await query.answer()
-
-    keyboard = InlineKeyboardMarkup([
-
-        [
-            InlineKeyboardButton(
-                "📨 تیکت‌های جدید",
-                callback_data="ticket_new"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📂 تیکت‌های باز",
-                callback_data="ticket_open"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "✅ بستن تیکت",
-                callback_data="ticket_close"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🔍 جستجوی تیکت",
-                callback_data="ticket_search"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📢 پیام همگانی",
-                callback_data="broadcast"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📩 پیام خصوصی",
-                callback_data="private_message"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📷 ارسال عکس",
-                callback_data="photo_message"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🎥 ارسال ویدیو",
-                callback_data="video_message"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📄 ارسال فایل",
-                callback_data="file_message"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📌 ارسال اطلاعیه",
-                callback_data="notice"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📋 تاریخچه پیام‌ها",
-                callback_data="message_logs"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📊 آمار پشتیبانی",
-                callback_data="support_stats"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⬅️ بازگشت",
-                callback_data="back_admin"
-            )
-        ]
-
-    ])
-
-    await query.edit_message_text(
-
-f"""
-📞 مدیریت پشتیبانی
-
-━━━━━━━━━━━━━━
-
-📨 تیکت‌های باز
-{OPEN_TICKETS}
-
-✅ تیکت‌های بسته
-{CLOSED_TICKETS}
-
-📢 پیام همگانی
-{BROADCAST_COUNT}
-
-📩 پیام خصوصی
-{PRIVATE_MESSAGES}
-
-━━━━━━━━━━━━━━
-
-Liber Coin Support Center
-""",
-
-        reply_markup=keyboard
-    )
-
-
-support_handler = CallbackQueryHandler(
-    support_panel,
-    pattern="^support$"
-)
-# ==========================
-# Liber Coin Admin Panel V6
-# بخش دهم - تنظیمات، امنیت و سیستم
-# ==========================
-
-BOT_STATUS = "🟢 آنلاین"
-MAINTENANCE = "🔴 خاموش"
-JOIN_CHANNEL = "@Libercoin1"
-BACKUP_STATUS = "✅ آخرین بکاپ موفق"
-BOT_VERSION = "V6.0"
-
-
-async def system_panel(update, context):
-
-    query = update.callback_query
-    await query.answer()
-
-    keyboard = InlineKeyboardMarkup([
-
-        [
-            InlineKeyboardButton(
-                "⚙️ تنظیمات ربات",
-                callback_data="bot_settings"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📢 کانال عضویت اجباری",
-                callback_data="force_join"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "👮 مدیریت مدیران",
-                callback_data="admins"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🔐 امنیت ربات",
-                callback_data="security"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🚫 لیست کاربران بن",
-                callback_data="ban_list"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⚠️ لیست اخطارها",
-                callback_data="warn_list"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "💾 ساخت بکاپ",
-                callback_data="backup"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "♻️ بازیابی بکاپ",
-                callback_data="restore"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📂 مدیریت فایل‌ها",
-                callback_data="files"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🗄 مدیریت دیتابیس",
-                callback_data="database"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📋 لاگ مدیران",
-                callback_data="admin_logs"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📊 وضعیت سرور",
-                callback_data="server"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🟢 روشن کردن ربات",
-                callback_data="bot_on"
-            ),
-            InlineKeyboardButton(
-                "🔴 خاموش کردن ربات",
-                callback_data="bot_off"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🧹 پاکسازی کش",
-                callback_data="clear_cache"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🔄 ریست ربات",
-                callback_data="restart"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⬅️ بازگشت",
-                callback_data="back_admin"
-            )
-        ]
-
-    ])
-
-    await query.edit_message_text(
-
-f"""
-⚙️ مدیریت سیستم
-
-━━━━━━━━━━━━━━
-
-🤖 نسخه ربات
-{BOT_VERSION}
-
-🟢 وضعیت ربات
-{BOT_STATUS}
-
-🛠 حالت تعمیرات
-{MAINTENANCE}
-
-📢 کانال اجباری
-{JOIN_CHANNEL}
-
-💾 وضعیت بکاپ
-{BACKUP_STATUS}
-
-━━━━━━━━━━━━━━
-
-پنل مدیریت سیستم Liber Coin
-""",
-
-        reply_markup=keyboard
-    )
-
-
-system_handler = CallbackQueryHandler(
-    system_panel,
-    pattern="^settings$"
-)
+    await update.message.reply_text(text)
+
+
+# =====================================================================
+# BROADCAST
+# =====================================================================
+
+async def broadcast_cmd(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    if not context.args:
+        await update.message.reply_text("استفاده: /broadcast متن پیام")
+        return
+    msg = " ".join(context.args)
+    sent, failed = 0, 0
+    for uid_str, d in db["users"].items():
+        if d["banned"]:
+            continue
+        try:
+            await context.bot.send_message(int(uid_str), f"📢 {msg}")
+            sent += 1
+        except Exception:
+            failed += 1
+    await update.message.reply_text(f"✅ پیام همگانی ارسال شد به {sent} کاربر ({failed} ناموفق).")
+
+
+# =====================================================================
+# GIFT CODES
+# =====================================================================
+
+async def addcode_cmd(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    if len(context.args) < 3:
+        await update.message.reply_text("استفاده: /addcode کد مقدار تعداد_استفاده")
+        return
+    code = context.args[0].upper()
+    try:
+        reward = float(context.args[1])
+        uses = int(context.args[2])
+    except ValueError:
+        await update.message.reply_text("مقادیر نامعتبرند.")
+        return
+    db["gift_codes"][code] = {"reward": reward, "uses_left": uses, "redeemed_by": []}
+    save_data()
+    log_action(update.effective_user.id, "ADMIN_ADD_CODE", code)
+    await update.message.reply_text(f"✅ کد «{code}» ساخته شد: {reward} LIBER، {uses} بار قابل استفاده.")
+
+
+# =====================================================================
+# NEWS
+# =====================================================================
+
+async def addnews_cmd(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    if not context.args:
+        await update.message.reply_text("استفاده: /addnews متن خبر")
+        return
+    text = " ".join(context.args)
+    db["news"].append({"text": text, "at": str(datetime.utcnow())})
+    db["news"] = db["news"][-100:]
+    save_data()
+    await update.message.reply_text("✅ خبر منتشر شد.")
+
+
+# =====================================================================
+# FORCE TOURNAMENT / EVENT
+# =====================================================================
+
+async def force_tournament_cmd(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    ranked = sorted(db["users"].values(), key=lambda d: d["rank_points"], reverse=True)[:3]
+    rewards = {0: 700, 1: 500, 2: 300}
+    winners_text = []
+    for i, d in enumerate(ranked):
+        if d["rank_points"] <= 0:
+            continue
+        d["liber"] += rewards.get(i, 0)
+        winners_text.append(f"{i+1}. {d['name']} +{rewards.get(i,0)} LIBER")
+        try:
+            await context.bot.send_message(
+                d["id"], f"🏆 تورنمنت فصلی به‌صورت دستی توسط ادمین بسته شد. رتبه {i+1} شدی و {rewards.get(i,0)} LIBER گرفتی!"
+            )
+        except Exception:
+            pass
+    for d in db["users"].values():
+        d["rank_points"] = 0
+    db["tournament"]["started_at"] = str(datetime.utcnow())
+    save_data()
+    log_action(update.effective_user.id, "ADMIN_FORCE_TOURNAMENT", "")
+    await update.message.reply_text("🏆 تورنمنت به‌صورت دستی بسته شد.\n\n" + ("\n".join(winners_text) or "برنده‌ای با امتیاز مثبت نبود."))
+
+
+async def force_event_cmd(update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await _deny(update)
+        return
+    if not context.args:
+        await update.message.reply_text(
+            "استفاده: /forceevent متن_رویداد\n"
+            "مثال: /forceevent جشنواره ویژه آخر هفته شروع شد!"
+        )
+        return
+    text = " ".join(context.args)
+    db["events"].append({"name": "📅 رویداد ویژه ادمین", "desc": text, "at": str(datetime.utcnow())})
+    db["events"] = db["events"][-30:]
+    save_data()
+
+    sent = 0
+    for uid_str, d in db["users"].items():
+        if d["banned"]:
+            continue
+        try:
+            await context.bot.send_message(int(uid_str), f"🌍 رویداد جهانی: 📅 رویداد ویژه ادمین\n{text}")
+            sent += 1
+        except Exception:
+            pass
+    await update.message.reply_text(f"✅ رویداد دستی ارسال شد به {sent} کاربر.")
+
+
+# =====================================================================
+# ADMIN REPLY-KEYBOARD ROUTER
+# =====================================================================
+
+ADMIN_ROUTES = {
+    "📊 داشبورد": dashboard,
+    "👥 کاربران": users_list,
+    "💹 اقتصاد": economy_view,
+    "📤 درخواست‌های برداشت": withdrawals_admin_view,
+    "📋 لاگ‌ها": logs_view,
+    "🔙 خروج از پنل ادمین": admin_exit,
+}
+
+
+async def admin_menu_router(update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    text = update.message.text
+
+    # Only intercept text that matches an admin-menu button, and only for admins.
+    # Any other text falls through untouched to main.py's own menu_router.
+    if text not in ADMIN_ROUTES and text not in (
+        "🚫 بن و اخطار", "📢 پیام همگانی", "🎟 ساخت کد هدیه", "📰 انتشار خبر",
+        "🏆 برگزاری فوری تورنمنت", "🌍 ارسال رویداد دستی",
+    ):
+        return  # not an admin-menu button — let main.py's router handle it
+
+    if not is_admin(user_id):
+        return  # never reveal admin menu items exist, to anyone else
+
+    if text in ADMIN_ROUTES:
+        await ADMIN_ROUTES[text](update, context)
+    elif text == "🚫 بن و اخطار":
+        await update.message.reply_text(
+            "🚫 مدیریت بن و اخطار\n\n"
+            "/userinfo آیدی — جزئیات کاربر\n"
+            "/ban آیدی — مسدود کردن\n"
+            "/unban آیدی — آزاد کردن (اخطارها هم صفر می‌شود)\n"
+            "/warn آیدی دلیل — ثبت اخطار (۳ اخطار = بن خودکار)\n"
+            "/resetwarn آیدی — صفر کردن اخطارها بدون آزاد کردن"
+        )
+    elif text == "📢 پیام همگانی":
+        await update.message.reply_text("استفاده: /broadcast متن پیام")
+    elif text == "🎟 ساخت کد هدیه":
+        await update.message.reply_text("استفاده: /addcode کد مقدار تعداد_استفاده\nمثال: /addcode WELCOME100 100 500")
+    elif text == "📰 انتشار خبر":
+        await update.message.reply_text("استفاده: /addnews متن خبر")
+    elif text == "🏆 برگزاری فوری تورنمنت":
+        await force_tournament_cmd(update, context)
+    elif text == "🌍 ارسال رویداد دستی":
+        await update.message.reply_text("استفاده: /forceevent متن رویداد")
+
+    # This update was a recognized admin-menu button for a real admin and has
+    # already been fully handled above — stop it from also falling through
+    # to main.py's generic menu_router, which would otherwise reply with an
+    # unrelated "coming soon" fallback message for the same tap.
+    raise ApplicationHandlerStop
+
+
+# =====================================================================
+# REGISTRATION (called from main.py's register_handlers)
+# =====================================================================
+
+def register_admin_handlers(app):
+    app.add_handler(CommandHandler("admin", admin_panel))
+    app.add_handler(CommandHandler("userinfo", user_info))
+    app.add_handler(CommandHandler("ban", ban_cmd))
+    app.add_handler(CommandHandler("unban", unban_cmd))
+    app.add_handler(CommandHandler("warn", warn_cmd))
+    app.add_handler(CommandHandler("resetwarn", resetwarn_cmd))
+    app.add_handler(CommandHandler("addliber", add_liber_cmd))
+    app.add_handler(CommandHandler("removeliber", remove_liber_cmd))
+    app.add_handler(CommandHandler("setprice", set_price_cmd))
+    app.add_handler(CommandHandler("p2p_admin", p2p_admin_view))
+    app.add_handler(CommandHandler("approve", approve_cmd))
+    app.add_handler(CommandHandler("reject", reject_cmd))
+    app.add_handler(CommandHandler("broadcast", broadcast_cmd))
+    app.add_handler(CommandHandler("addcode", addcode_cmd))
+    app.add_handler(CommandHandler("addnews", addnews_cmd))
+    app.add_handler(CommandHandler("forcetournament", force_tournament_cmd))
+    app.add_handler(CommandHandler("forceevent", force_event_cmd))
+
+    # This must be registered BEFORE main.py's generic menu_router text handler,
+    # so admin.py's register_admin_handlers() is called first inside
+    # main.py.register_handlers(), and admin_menu_router simply no-ops
+    # (returns without consuming the update) for anything that isn't an
+    # admin-menu button, letting main.py's own handler process it next.
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, admin_menu_router), group=-1)
