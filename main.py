@@ -1353,17 +1353,22 @@ MISSION_TEMPLATES = {
     ],
 }
 
-async def get_missions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
+def missions_keyboard(missions_rows):
+    rows = []
+    for m in missions_rows:
+        mark = "✅" if m["completed"] else "⬜"
+        label = f"{mark} {m['description']} (+{m['reward_liber']:.0f} LIBER)"
+        cb = "mis_noop" if m["completed"] else f"mis_done_{m['mission_id']}"
+        rows.append([InlineKeyboardButton(label, callback_data=cb)])
+    rows.append([InlineKeyboardButton("🔄 بروزرسانی", callback_data="mis_refresh")])
+    return InlineKeyboardMarkup(rows)
 
+
+def _get_or_create_missions(user_id: int):
     with closing(get_conn()) as conn:
         existing = conn.execute(
-            "SELECT * FROM missions WHERE user_id = ? AND completed = 0",
-            (user_id,),
+            "SELECT * FROM missions WHERE user_id = ? AND mission_type = 'daily' "
+            "AND date(created_at) = date('now')", (user_id,),
         ).fetchall()
 
     if not existing:
@@ -1377,22 +1382,78 @@ async def get_missions(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
         with closing(get_conn()) as conn:
             existing = conn.execute(
-                "SELECT * FROM missions WHERE user_id = ? AND completed = 0",
-                (user_id,),
+                "SELECT * FROM missions WHERE user_id = ? AND mission_type = 'daily' "
+                "AND date(created_at) = date('now')", (user_id,),
             ).fetchall()
+    return existing
 
-    text = "🎯 مأموریت‌های فعال\n\n"
-    for m in existing:
-        text += f"#{m['mission_id']} — {m['description']} (+{m['reward_liber']} LIBER, +{m['reward_xp']} XP)\n"
-    text += "\nبرای تکمیل: /complete شماره_مأموریت"
 
-    await update.message.reply_text(text)
+async def get_missions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user = get_user(user_id)
+    if not user:
+        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
+        return
+
+    missions = _get_or_create_missions(user_id)
+    done = sum(1 for m in missions if m["completed"])
+    await update.message.reply_text(
+        f"🎯 مأموریت‌های امروز ({done}/{len(missions)} انجام‌شده)\n\nروی هرکدوم بزن تا تیک بخوره و جایزه بگیری:",
+        reply_markup=missions_keyboard(missions),
+    )
+
+
+async def missions_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    data = query.data
+    await query.answer()
+
+    if data == "mis_noop":
+        return
+
+    if data == "mis_refresh":
+        missions = _get_or_create_missions(user_id)
+        done = sum(1 for m in missions if m["completed"])
+        await query.edit_message_text(
+            f"🎯 مأموریت‌های امروز ({done}/{len(missions)} انجام‌شده)\n\nروی هرکدوم بزن تا تیک بخوره:",
+            reply_markup=missions_keyboard(missions),
+        )
+        return
+
+    if data.startswith("mis_done_"):
+        mission_id = int(data[len("mis_done_"):])
+        with closing(get_conn()) as conn:
+            mission = conn.execute(
+                "SELECT * FROM missions WHERE mission_id = ? AND user_id = ?", (mission_id, user_id)
+            ).fetchone()
+
+        if not mission or mission["completed"]:
+            await query.answer("قبلاً انجام شده یا پیدا نشد.", show_alert=True)
+            return
+
+        with closing(get_conn()) as conn, conn:
+            conn.execute("UPDATE missions SET completed = 1 WHERE mission_id = ?", (mission_id,))
+
+        add_currency(user_id, liber=mission["reward_liber"])
+        add_xp(user_id, mission["reward_xp"])
+        log_action(user_id, "MISSION_COMPLETE", mission["description"])
+
+        missions = _get_or_create_missions(user_id)
+        done = sum(1 for m in missions if m["completed"])
+        await query.answer(f"✅ +{mission['reward_liber']:.0f} LIBER, +{mission['reward_xp']} XP", show_alert=True)
+        await query.edit_message_text(
+            f"🎯 مأموریت‌های امروز ({done}/{len(missions)} انجام‌شده)\n\nروی هرکدوم بزن تا تیک بخوره:",
+            reply_markup=missions_keyboard(missions),
+        )
+
 
 async def complete_mission(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Command fallback: /complete شماره (button checklist via 🎯 مأموریت‌ها is the main path)."""
     user_id = update.effective_user.id
 
     if not context.args:
-        await update.message.reply_text("استفاده: /complete شماره_مأموریت")
+        await update.message.reply_text("از دکمه‌ی 🎯 مأموریت‌ها استفاده کن، یا: /complete شماره")
         return
 
     try:
@@ -1606,9 +1667,18 @@ SHOP_ITEMS = {
 }
 
 VIP_TIERS = {
-    "silver": {"name": "⭐ VIP نقره‌ای", "cost_liber": 1000, "duration_days": 7},
-    "gold": {"name": "🥇 VIP طلایی", "cost_liber": 2500, "duration_days": 7},
-    "diamond": {"name": "💎 VIP الماسی", "cost_liber": 5000, "duration_days": 7},
+    "normal_3m": {"name": "🥈 اشتراک عادی (۳ ماهه)", "cost_liber": 4000, "duration_days": 90,
+                  "perk": "درآمد و XP +10٪"},
+    "normal_6m": {"name": "🥈 اشتراک عادی (۶ ماهه)", "cost_liber": 7000, "duration_days": 180,
+                  "perk": "درآمد و XP +10٪"},
+    "dragon_3m": {"name": "🐉 اشتراک دراگون (۳ ماهه)", "cost_liber": 9000, "duration_days": 90,
+                  "perk": "درآمد و XP +25٪ + صندوق طلایی رایگان هفتگی"},
+    "dragon_6m": {"name": "🐉 اشتراک دراگون (۶ ماهه)", "cost_liber": 15000, "duration_days": 180,
+                  "perk": "درآمد و XP +25٪ + صندوق طلایی رایگان هفتگی"},
+    "legend_3m": {"name": "👑 اشتراک لیبری لجند (۳ ماهه)", "cost_liber": 20000, "duration_days": 90,
+                  "perk": "درآمد و XP +50٪ + صندوق الماسی رایگان هفتگی + قاب اختصاصی"},
+    "legend_6m": {"name": "👑 اشتراک لیبری لجند (۶ ماهه)", "cost_liber": 32000, "duration_days": 180,
+                  "perk": "درآمد و XP +50٪ + صندوق الماسی رایگان هفتگی + قاب اختصاصی"},
 }
 
 async def shop_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1920,7 +1990,6 @@ def add_season_points(user_id: int, points: int):
                  points = excluded.points, league = excluded.league""",
             (user_id, season["season_id"], new_points, new_league),
         )
-
 async def render_league_text(user_id: int) -> str:
     season = get_active_season()
 
@@ -3086,6 +3155,14 @@ def main():
     app.add_handler(CallbackQueryHandler(shop_callback, pattern="^shop_"))
     app.add_handler(CallbackQueryHandler(chest_callback, pattern="^chest_open_"))
     app.add_handler(CallbackQueryHandler(games_callback, pattern="^game_"))
+    app.add_handler(CallbackQueryHandler(missions_callback, pattern="^mis_"))
+
+    # Standalone admin.py panel (activated only for ADMIN_IDS, via /admin command)
+    try:
+        import admin as admin_module
+        admin_module.register_admin_handlers(app, admin_ids=ADMIN_IDS, db_path=DB_PATH)
+    except ImportError:
+        logger.warning("admin.py not found next to main.py — admin panel module not loaded.")
     app.add_handler(CommandHandler("chest", chest_menu))
     app.add_handler(CommandHandler("profile", profile))
     app.add_handler(CommandHandler("wallet", wallet))
@@ -3191,3 +3268,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
