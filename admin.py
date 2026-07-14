@@ -4,7 +4,7 @@ LIBER - Admin Panel Module (standalone, importable)
 Drop this file next to main.py. It manages its own SQLite connection to the
 same database file, so it works independently of main.py's internals.
 
-Integration (add these 2 lines in main.py):
+Integration (add  in main.py):
 
     import admin
     admin.register_admin_handlers(app, admin_ids=ADMIN_IDS, db_path=DB_PATH)
