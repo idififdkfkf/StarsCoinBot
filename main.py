@@ -41,7 +41,7 @@ from telegram.ext import (
 #   REQUIRED_CHANNEL  -> e.g. @Libercoin1  (leave unset/empty to disable)
 #   ADMIN_IDS         -> comma-separated numeric Telegram user IDs
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+BOT_TOKEN = "8818731091:AAHD4vNWYdFfDD6C0__60vsd4hCDumRuB-Y"
 DB_PATH = os.environ.get("DB_PATH", "liber.db")
 
 _admin_ids_env = os.environ.get("ADMIN_IDS", "6188951798")
