@@ -41,7 +41,7 @@ from telegram.ext import (
 #   REQUIRED_CHANNEL  -> e.g. @Libercoin1  (leave unset/empty to disable)
 #   ADMIN_IDS         -> comma-separated numeric Telegram user IDs
 
-BOT_TOKEN = "8818731091:AAHD4vNWYdFfDD6C0__60vsd4hCDumRuB-Y"
+BOT_TOKEN ="8818731091:AAHD4vNWYdFfDD6C0__60vsd4hCDumRuB-Y"
 DB_PATH = os.environ.get("DB_PATH", "liber.db")
 
 _admin_ids_env = os.environ.get("ADMIN_IDS", "6188951798")
@@ -75,8 +75,8 @@ def init_db():
             joined_at TEXT,
             level INTEGER DEFAULT 1,
             xp INTEGER DEFAULT 0,
-            liber REAL DEFAULT 100,
-            coin REAL DEFAULT 500,
+            liber REAL DEFAULT 0,
+            coin REAL DEFAULT 50,
             energy INTEGER DEFAULT 100,
             title TEXT DEFAULT 'تازه‌وارد',
             bio TEXT DEFAULT '',
@@ -572,18 +572,14 @@ def fluctuate_market():
 
 def main_menu_keyboard():
     keyboard = [
-        ["👤 پروفایل", "🌍 کشور"],
-        ["💹 بازار LIBER", "💰 کیف پول"],
-        ["🏦 بانک", "🏪 فروشگاه"],
-        ["🎁 صندوق‌ها", "🎯 مأموریت‌ها"],
-        ["🏆 رتبه‌بندی", "🤝 اتحاد"],
-        ["🎮 بازی‌ها", "🎖 دستاوردها"],
-        ["🏷 مزایده", "👥 دعوت دوستان"],
-        ["💼 شغل", "⚔️ جنگ کلن"],
-        ["🔬 تحقیقات", "🛡 دفاع"],
-        ["🌌 اکتشاف", "🤖 مشاور هوشمند"],
-        ["📰 اخبار جهان", "🎟 پیش‌بینی قیمت"],
-        ["⚔️ رقابت آنلاین", "⚙ تنظیمات"],
+        ["👤 پروفایل", "🌍 کشور", "💰 کیف پول"],
+        ["💹 بازار LIBER", "🏦 بانک", "🏪 فروشگاه"],
+        ["🎁 صندوق‌ها", "🎯 مأموریت‌ها", "🎮 بازی‌ها"],
+        ["🏆 رتبه‌بندی", "🎖 دستاوردها", "🤝 اتحاد"],
+        ["🏷 مزایده", "👥 دعوت دوستان", "💼 شغل"],
+        ["⚔️ جنگ کلن", "⚔️ رقابت آنلاین", "🔬 تحقیقات"],
+        ["🛡 دفاع", "🌌 اکتشاف", "🤖 مشاور هوشمند"],
+        ["📰 اخبار جهان", "🎟 پیش‌بینی قیمت", "⚙ تنظیمات"],
         ["❓ راهنما"],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -666,18 +662,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         display_name = user.username and f"@{user.username}" or user.first_name
         welcome_text = (
-            f"🌍━━━━━━━━━━━━━━━━🌍\n"
             f"سلام جناب {display_name} 👋\n"
-            f"به ربات LIBER خوش آمدید!\n"
-            f"🌍━━━━━━━━━━━━━━━━🌍\n\n"
+            f"به ربات LIBER خوش آمدید!\n\n"
             "این یک بازی شبیه‌سازی اقتصادی سرگرمی است که در آن می‌توانی:\n"
             "🌍 کشور خودت را بسازی\n"
             "💹 در بازار LIBER معامله کنی\n"
-            "🏆 در لیگ فصلی رقابت کنی\n"
+            "💼 با کار و مأموریت LIBER جمع کنی\n"
+            "🏆 در لیگ فصلی و رقابت آنلاین بجنگی\n"
             "🤝 با دیگران اتحاد تشکیل بدی\n\n"
-            "🎁 هدیه خوش‌آمدگویی: 100 LIBER + 500 Coin در حسابت فعال شد!\n\n"
-            "⚠️ توجه: تمام ارزهای این بازی (LIBER, Coin, Energy) کاملاً مجازی هستند "
-            "و صرفاً برای سرگرمی و رقابت درون‌بازی استفاده می‌شوند."
+            "⚠️ همه‌چیز اینجا باید با تلاش به‌دست بیاد — LIBER مجانی نیست!\n"
+            "تمام ارزهای این بازی (LIBER, Coin, Energy) کاملاً مجازی هستند."
         )
     else:
         display_name = user.username and f"@{user.username}" or user.first_name
@@ -3599,7 +3593,6 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📰 اخبار جهان": world_news,
         "🎟 پیش‌بینی قیمت": predict_view,
         "⚔️ رقابت آنلاین": competition_view,
-"👑 خرید اشتراک": subscriptions_command,
     }
 
     handler = routes.get(text)
@@ -3613,441 +3606,6 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------------------------
 # Background job: automatic market fluctuation
 # ---------------------------------------------------------------------------
-"""
-LIBER - Stars Subscription Module (Entertainment Edition)
---------------------------------------------------------------
-Standalone add-on file. Does NOT modify main.py or admin.py.
-
-What this file does:
-- Sells in-game VIP subscription tiers using REAL Telegram Stars,
-  via Telegram's own official invoice/payment API (sendInvoice).
-- Payment is verified by Telegram itself (pre_checkout_query +
-  successful_payment). The bot never claims a payment succeeded
-  unless Telegram has actually confirmed it.
-- On confirmed payment, the matching VIP tier is activated
-  automatically in the existing `vip_status` table.
-
-What this file deliberately does NOT do:
-- No crypto/TON withdrawals of any kind.
-- No "processing / insufficient balance, please wait" stalling
-  messages about withdrawals.
-- No promise of converting in-game currency into real money.
-All perks granted here are in-game only (LIBER/XP boosts, free
-in-game chests, cosmetic titles/frames) — nothing leaves the game.
-
-Requirements:
-    pip install python-telegram-bot==21.*
-
-Hook-up (add these lines wherever main.py builds the Application —
-no need to change anything else in main.py):
-
-    import subscriptions
-    subscriptions.register_subscription_handlers(app, db_path=DB_PATH)
-
-That's it. This file manages its own DB table and handlers.
-"""
-
-import logging
-import sqlite3
-import time
-from contextlib import closing
-from datetime import datetime, timedelta
-
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    LabeledPrice,
-)
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    CallbackQueryHandler,
-    PreCheckoutQueryHandler,
-    MessageHandler,
-    ContextTypes,
-    filters,
-)
-
-logger = logging.getLogger("liber.subscriptions")
-
-# ---------------------------------------------------------------------------
-# Config (filled in by register_subscription_handlers)
-# ---------------------------------------------------------------------------
-
-_DB_PATH = "liber.db"
-
-
-def _get_conn():
-    conn = sqlite3.connect(_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def _init_tables():
-    """Creates tables this module needs. Uses IF NOT EXISTS so it is safe
-    to run alongside the existing main.py schema — nothing here overlaps
-    with or overwrites any table from main.py."""
-    with closing(_get_conn()) as conn, conn:
-        # vip_status is expected to already exist from main.py, but we
-        # create it defensively in case this module is used standalone.
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS vip_status (
-            user_id INTEGER PRIMARY KEY,
-            tier TEXT,
-            activated_at TEXT,
-            expires_at TEXT
-        )
-        """)
-
-        # Purely a purchase log/receipt history — for the user's own
-        # reference and for admins to see what was bought. Not a wallet,
-        # not a balance, nothing withdrawable.
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS star_purchases (
-            purchase_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            tier_key TEXT,
-            duration_key TEXT,
-            stars_paid INTEGER,
-            telegram_charge_id TEXT,
-            purchased_at TEXT
-        )
-        """)
-
-
-def _get_user_liber_row(user_id: int):
-    with closing(_get_conn()) as conn:
-        return conn.execute(
-            "SELECT * FROM users WHERE user_id = ?", (user_id,)
-        ).fetchone()
-
-
-def _log(user_id: int, action: str, detail: str = ""):
-    try:
-        with closing(_get_conn()) as conn, conn:
-            conn.execute(
-                "INSERT INTO logs (user_id, action, detail, created_at) VALUES (?, ?, ?, ?)",
-                (user_id, action, detail, datetime.utcnow().isoformat()),
-            )
-    except sqlite3.OperationalError:
-        # logs table might not exist if this module is ever used fully
-        # standalone; purchase history in star_purchases still works.
-        pass
-
-
-# ---------------------------------------------------------------------------
-# Subscription tier definitions (real Telegram Stars prices)
-# ---------------------------------------------------------------------------
-# NOTE: Telegram Stars (currency code "XTR") amounts are whole numbers of
-# Stars — no decimal/minor-unit multiplication like normal currencies.
-
-STAR_TIERS = {
-    "premium": {
-        "name": "⭐ اشتراک پرمیوم",
-        "emoji": "⭐",
-        "perks": [
-            "درآمد و XP +10٪",
-        ],
-        "durations": {
-            "3m": {"label": "۳ ماهه", "months": 3, "stars": 30},
-            "6m": {"label": "۶ ماهه", "months": 6, "stars": 45},
-        },
-    },
-    "dragon": {
-        "name": "🐉 اشتراک دراگون",
-        "emoji": "🐉",
-        "perks": [
-            "درآمد و XP +25٪",
-            "🎁 صندوق طلایی رایگان هفتگی",
-        ],
-        "durations": {
-            "3m": {"label": "۳ ماهه", "months": 3, "stars": 50},
-            "6m": {"label": "۶ ماهه", "months": 6, "stars": 90},
-        },
-    },
-    "diamond": {
-        "name": "💎 اشتراک الماس",
-        "emoji": "💎",
-        "perks": [
-            "درآمد و XP +35٪",
-            "🎁 صندوق الماسی رایگان هفتگی",
-            "🎨 قاب ویژه پروفایل",
-        ],
-        "durations": {
-            "3m": {"label": "۳ ماهه", "months": 3, "stars": 100},
-            "6m": {"label": "۶ ماهه", "months": 6, "stars": 150},
-        },
-    },
-    "legend": {
-        "name": "👑 اشتراک لیبری لجند",
-        "emoji": "👑",
-        "perks": [
-            "درآمد و XP +50٪",
-            "🎁 صندوق الماسی رایگان هفتگی",
-            "🎨 قاب اختصاصی پروفایل",
-            "🏷 لقب افسانه‌ای انحصاری",
-        ],
-        "durations": {
-            "3m": {"label": "۳ ماهه", "months": 3, "stars": 170},
-            "6m": {"label": "۶ ماهه", "months": 6, "stars": 220},
-        },
-    },
-}
-
-TIER_ORDER = ["premium", "dragon", "diamond", "legend"]
-
-
-# ---------------------------------------------------------------------------
-# Keyboards
-# ---------------------------------------------------------------------------
-
-def tiers_menu_keyboard():
-    rows = []
-    for key in TIER_ORDER:
-        tier = STAR_TIERS[key]
-        rows.append([InlineKeyboardButton(f"{tier['name']}", callback_data=f"sub_tier_{key}")])
-    rows.append([InlineKeyboardButton("📜 اشتراک‌های من", callback_data="sub_mystatus")])
-    return InlineKeyboardMarkup(rows)
-
-
-def tier_detail_keyboard(tier_key: str):
-    tier = STAR_TIERS[tier_key]
-    rows = []
-    for dur_key, dur in tier["durations"].items():
-        rows.append([
-            InlineKeyboardButton(
-                f"🛒 {dur['label']} — {dur['stars']}⭐",
-                callback_data=f"sub_buy_{tier_key}_{dur_key}",
-            )
-        ])
-    rows.append([InlineKeyboardButton("🔙 بازگشت به لیست اشتراک‌ها", callback_data="sub_menu")])
-    return InlineKeyboardMarkup(rows)
-
-
-def _tier_detail_text(tier_key: str) -> str:
-    tier = STAR_TIERS[tier_key]
-    perks_text = "\n".join(f"  ✅ {p}" for p in tier["perks"])
-    lines = [f"{tier['name']}", "", "مزایا:", perks_text, "", "مدت‌های قابل خرید:"]
-    for dur in tier["durations"].values():
-        lines.append(f"  • {dur['label']} — {dur['stars']}⭐")
-    lines.append("")
-    lines.append("پرداخت مستقیم از طریق درگاه رسمی Stars تلگرام انجام می‌شود.")
-    return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# Entry points
-# ---------------------------------------------------------------------------
-
-async def subscriptions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🛍 فروشگاه اشتراک‌های LIBER\n\n"
-        "با ⭐ Stars تلگرام اشتراک بخر و مزایای ویژه بگیر:\n"
-        "روی هرکدوم بزن تا جزئیات و قیمت رو ببینی 👇",
-        reply_markup=tiers_menu_keyboard(),
-    )
-
-
-async def subscriptions_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    data = query.data
-    user_id = query.from_user.id
-    await query.answer()
-
-    if data == "sub_menu":
-        await query.edit_message_text(
-            "🛍 فروشگاه اشتراک‌های LIBER\n\nروی هرکدوم بزن تا جزئیات ببینی:",
-            reply_markup=tiers_menu_keyboard(),
-        )
-        return
-
-    if data == "sub_mystatus":
-        await _send_my_status(query, user_id, edit=True)
-        return
-
-    if data.startswith("sub_tier_"):
-        tier_key = data[len("sub_tier_"):]
-        if tier_key not in STAR_TIERS:
-            await query.answer("❌ اشتراک نامعتبر.", show_alert=True)
-            return
-        await query.edit_message_text(
-            _tier_detail_text(tier_key),
-            reply_markup=tier_detail_keyboard(tier_key),
-        )
-        return
-
-    if data.startswith("sub_buy_"):
-        _, _, tier_key, dur_key = data.split("_")
-        tier = STAR_TIERS.get(tier_key)
-        dur = tier["durations"].get(dur_key) if tier else None
-        if not tier or not dur:
-            await query.answer("❌ گزینه نامعتبر.", show_alert=True)
-            return
-
-        payload = f"vipstars|{tier_key}|{dur_key}|{user_id}|{int(time.time())}"
-        title = f"{tier['name']} ({dur['label']})"
-        description = " | ".join(tier["perks"])
-
-        await context.bot.send_invoice(
-            chat_id=query.message.chat_id,
-            title=title,
-            description=description[:255],
-            payload=payload,
-            provider_token="",  # empty for Telegram Stars payments
-            currency="XTR",
-            prices=[LabeledPrice(label=title[:32], amount=dur["stars"])],
-        )
-        return
-
-
-async def _send_my_status(query_or_update, user_id: int, edit: bool = False):
-    with closing(_get_conn()) as conn:
-        status = conn.execute(
-            "SELECT * FROM vip_status WHERE user_id = ?", (user_id,)
-        ).fetchone()
-        history = conn.execute(
-            "SELECT * FROM star_purchases WHERE user_id = ? ORDER BY purchase_id DESC LIMIT 5",
-            (user_id,),
-        ).fetchall()
-
-    lines = ["📜 وضعیت اشتراک شما", ""]
-    if status:
-        tier = STAR_TIERS.get(status["tier"])
-        expires_at = datetime.fromisoformat(status["expires_at"])
-        active = datetime.utcnow() < expires_at
-        tier_name = tier["name"] if tier else status["tier"]
-        lines.append(f"اشتراک فعلی: {tier_name}")
-        lines.append(f"وضعیت: {'✅ فعال' if active else '❌ منقضی شده'}")
-        lines.append(f"تاریخ انقضا: {expires_at.strftime('%Y-%m-%d')}")
-    else:
-        lines.append("شما در حال حاضر اشتراکی فعال ندارید.")
-
-    if history:
-        lines.append("")
-        lines.append("🧾 آخرین خریدها:")
-        for h in history:
-            tier = STAR_TIERS.get(h["tier_key"])
-            tname = tier["name"] if tier else h["tier_key"]
-            lines.append(f"  • {tname} ({h['duration_key']}) — {h['stars_paid']}⭐ — {h['purchased_at'][:10]}")
-
-    text = "\n".join(lines)
-    kb = tiers_menu_keyboard()
-
-    if edit:
-        await query_or_update.edit_message_text(text, reply_markup=kb)
-    else:
-        await query_or_update.message.reply_text(text, reply_markup=kb)
-
-
-async def my_subscription_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await _send_my_status(update, update.effective_user.id, edit=False)
-
-
-# ---------------------------------------------------------------------------
-# Payment verification (Telegram handles the actual money movement)
-# ---------------------------------------------------------------------------
-
-async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.pre_checkout_query
-    payload = query.invoice_payload or ""
-    if not payload.startswith("vipstars|"):
-        await query.answer(ok=False, error_message="سفارش نامعتبر است.")
-        return
-    # Everything checks out on our side; Telegram itself verifies the
-    # Stars balance/payment. We never claim success ourselves here.
-    await query.answer(ok=True)
-
-
-async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Fires only after Telegram has confirmed the Stars payment actually went
-    through. This is the single source of truth for activating a tier."""
-    payment = update.message.successful_payment
-    user_id = update.effective_user.id
-    payload = payment.invoice_payload or ""
-
-    parts = payload.split("|")
-    if len(parts) != 5 or parts[0] != "vipstars":
-        # Shouldn't happen since precheckout validates this, but guard anyway.
-        await update.message.reply_text(
-            "⚠️ پرداخت دریافت شد اما سفارش قابل شناسایی نبود. لطفاً با پشتیبانی تماس بگیر."
-        )
-        return
-
-    _, tier_key, dur_key, orig_user_id, _ts = parts
-    tier = STAR_TIERS.get(tier_key)
-    dur = tier["durations"].get(dur_key) if tier else None
-    if not tier or not dur:
-        await update.message.reply_text(
-            "⚠️ پرداخت دریافت شد اما نوع اشتراک نامعتبر بود. لطفاً با پشتیبانی تماس بگیر."
-        )
-        return
-
-    now = datetime.utcnow()
-    expires_at = now + timedelta(days=30 * dur["months"])
-
-    with closing(_get_conn()) as conn, conn:
-        conn.execute(
-            """INSERT INTO vip_status (user_id, tier, activated_at, expires_at)
-               VALUES (?, ?, ?, ?)
-               ON CONFLICT(user_id) DO UPDATE SET
-                 tier = excluded.tier,
-                 activated_at = excluded.activated_at,
-                 expires_at = excluded.expires_at""",
-            (user_id, tier_key, now.isoformat(), expires_at.isoformat()),
-        )
-        conn.execute(
-            """INSERT INTO star_purchases
-               (user_id, tier_key, duration_key, stars_paid, telegram_charge_id, purchased_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (
-                user_id,
-                tier_key,
-                dur_key,
-                payment.total_amount,
-                payment.telegram_payment_charge_id,
-                now.isoformat(),
-            ),
-        )
-
-    _log(user_id, "STARS_SUBSCRIPTION_ACTIVATED", f"{tier_key}/{dur_key}")
-
-    perks_text = "\n".join(f"  ✅ {p}" for p in tier["perks"])
-    await update.message.reply_text(
-        f"🎉 پرداخت با موفقیت تایید شد!\n\n"
-        f"{tier['name']} ({dur['label']}) فعال شد.\n\n"
-        f"مزایای فعال‌شده:\n{perks_text}\n\n"
-        f"📅 تاریخ انقضا: {expires_at.strftime('%Y-%m-%d')}\n\n"
-        f"با /myvip هر زمان می‌تونی وضعیت اشتراکت رو ببینی."
-    )
-
-
-# ---------------------------------------------------------------------------
-# Registration
-# ---------------------------------------------------------------------------
-
-def register_subscription_handlers(app: Application, db_path: str = "liber.db"):
-    """Call this once from main.py's setup, e.g.:
-
-        import subscriptions
-        subscriptions.register_subscription_handlers(app, db_path=DB_PATH)
-
-    Does not touch or require changes to any existing handler, table, or
-    file — purely additive.
-    """
-    global _DB_PATH
-    _DB_PATH = db_path
-    _init_tables()
-
-    app.add_handler(CommandHandler("subscriptions", subscriptions_command))
-    app.add_handler(CommandHandler("vipshop", subscriptions_command))
-    app.add_handler(CommandHandler("myvip", my_subscription_command))
-    app.add_handler(CallbackQueryHandler(subscriptions_callback, pattern="^sub_"))
-    app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
-    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
-
-    logger.info("Stars subscription module registered (/subscriptions, /myvip).")
-
 
 async def market_job(context: ContextTypes.DEFAULT_TYPE):
     new_price, bought, sold = fluctuate_market()
@@ -4188,3 +3746,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+‌
