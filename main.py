@@ -1,3748 +1,2295 @@
+# -*- coding: utf-8 -*-
 """
-LIBER - Economic Simulation Game Bot (Entertainment Edition)
---------------------------------------------------------------
-IMPORTANT: This is an entertainment-only simulation game.
-- No real-money withdrawals (no TON, no Stars payout)
-- No real-money deposits tied to in-game currency value
-- All currencies (LIBER, Coin, Energy) are virtual and exist only
-  for in-game progression, ranking, and fun.
+LIBER Telegram Bot — نسخه‌ی یک‌فایلی کامل
+================================================================
+همه‌ی قابلیت‌ها در همین یک فایل main.py جمع شده‌اند تا مستقیم روی
+GitHub قابل قرار گرفتن و اجرا باشند: اقتصاد (LIBER/Coin)، بازار
+ساعتی، بانک، صندوق‌ها، اشتراک با تلگرام استارز، برداشت TON با تایید
+دستی ادمین، رفرال، ماموریت روزانه‌ی اجباری (صندوق رایگان و رقابت
+آنلاین قفل است تا انجام شود)، رقابت آنلاین رنک‌بندی‌شده (سواپ/دراگون/
+لیبر/الماس) با صف واقعی و تورنمنت فصلی خودکار، و پنل مدیریت کامل.
 
-Requirements:
-    pip install python-telegram-bot==21.* 
+نصب:
+    pip install python-telegram-bot==21.*
 
-Run:
+اجرا:
     python main.py
+
+قبل از اجرا BOT_TOKEN و ADMIN_IDS را در بخش «SECTION 1: CONFIG»
+پایین همین فایل تنظیم کنید (ترجیحاً با متغیر محیطی، نه مستقیم در کد).
+"""
+# ============================================================
+#  SECTION 1: CONFIG — تنظیمات، تعرفه‌ها، رنک‌ها
+# ============================================================
+# -*- coding: utf-8 -*-
+"""
+تنظیمات کلی ربات LIBER
+همه‌ی مقادیر قابل تنظیم ربات اینجا جمع شده تا نیازی به گشتن توی کل کد نباشه.
 """
 
-import logging
+# ============================================================
+#   تنظیمات پایه
+# ============================================================
+BOT_TOKEN = "8818731091:AAHD4vNWYdFfDD6C0__60vsd4hCDumRuB-Y"          # توکن ربات از BotFather
+ADMIN_IDS = [123456789]                     # آیدی عددی ادمین‌ها (با @userinfobot بگیر)
+DB_PATH = "liber.db"
+
+# دستور مخفی فعال‌سازی پنل مدیریت. فقط برای کسانی که هم در ADMIN_IDS هستن
+# و هم دقیقاً همین متن رو بفرستن، پنل باز می‌شه. برای بقیه هیچ اتفاقی نمی‌افته
+# (نه خطا، نه پیام - انگار همچین دستوری وجود نداره).
+ADMIN_SECRET_COMMAND = "/root_gate_7719"
+
+# ============================================================
+#   عضویت اجباری
+# ============================================================
+FORCE_JOIN_CHANNELS = [
+    {"id": "@Libercoin1", "title": "کانال LIBER", "url": "https://t.me/Libercoin1"},
+    # برای افزودن کانال یا گروه دیگر، یک آیتم دیگر به همین شکل اضافه کن:
+    # {"id": "@your_channel_2", "title": "کانال دوم", "url": "https://t.me/your_channel_2"},
+]
+
+# ============================================================
+#   بازار لیبر (نوسان ساعتی)
+# ============================================================
+MARKET_BASE_PRICE = 100                 # قیمت پایه‌ی هر لیبر بر حسب سکه
+BUY_FEE_PERCENT = 2
+SELL_FEE_PERCENT = 2
+MARKET_FLUCTUATION_RANGE = (-0.07, 0.07)     # حداکثر نوسان در هر آپدیت
+MARKET_UPDATE_INTERVAL_SECONDS = 3600        # هر ۱ ساعت
+
+# ============================================================
+#   بانک
+# ============================================================
+BANK_INTEREST_PERCENT = 1.5     # سود روزانه‌ی سپرده
+LOAN_INTEREST_PERCENT = 5       # کارمزد وام
+MAX_LOAN_MULTIPLIER = 3         # سقف وام بر اساس سطح کاربر
+
+# ============================================================
+#   تجربه و سطح
+# ============================================================
+XP_PER_LEVEL = 100
+DAILY_MISSION_XP = 20
+DAILY_MISSION_LIBER = 8
+
+# ============================================================
+#   صندوق‌ها (Chest)
+# ============================================================
+CHEST_TABLE = {
+    "free":    {"cost": {},               "rewards": [("coin", 40, 120), ("liber", 1, 3)]},
+    "bronze":  {"cost": {"coin": 350},     "rewards": [("coin", 90, 350), ("liber", 2, 7), ("xp", 8, 18)]},
+    "silver":  {"cost": {"coin": 900},     "rewards": [("liber", 6, 20), ("diamond", 1, 2), ("xp", 15, 35)]},
+    "gold":    {"cost": {"liber": 130},    "rewards": [("liber", 18, 55), ("diamond", 2, 4), ("medal", 1, 2)]},
+    "diamond": {"cost": {"diamond": 25},   "rewards": [("liber", 50, 140), ("diamond", 4, 8), ("medal", 1, 4)]},
+}
+
+# ============================================================
+#   سطوح VIP (با الماس خریداری می‌شن)
+# ============================================================
+VIP_TIERS = {
+    "silver":  {"cost_diamond": 50,   "xp_bonus": 1.10, "income_bonus": 1.10},
+    "gold":    {"cost_diamond": 150,  "xp_bonus": 1.25, "income_bonus": 1.25},
+    "diamond": {"cost_diamond": 400,  "xp_bonus": 1.50, "income_bonus": 1.50},
+    "titan":   {"cost_diamond": 1000, "xp_bonus": 2.00, "income_bonus": 2.00},
+}
+
+# ============================================================
+#   اشتراک ویژه با تلگرام استارز (Telegram Stars / XTR)
+#   هر تعرفه شامل دو گزینه‌ی مدت ۳ و ۶ ماهه است.
+# ============================================================
+SUBSCRIPTION_TIERS = {
+    "normal": {
+        "title": "🎫 اشتراک عادی",
+        "perks": [
+            "۱۰٪ افزایش پاداش روزانه",
+            "دسترسی به صندوق‌های ویژه",
+        ],
+        "options": {3: 30, 6: 50},   # {ماه: قیمت به استارز}
+    },
+    "dragon": {
+        "title": "🐉 اشتراک اژدها",
+        "perks": [
+            "۲۵٪ افزایش پاداش روزانه",
+            "کارمزد بازار نصف",
+            "بج ویژه‌ی اژدها کنار نام",
+        ],
+        "options": {3: 50, 6: 80},
+    },
+    "liberi": {
+        "title": "👑 اشتراک لیبری (VIP برتر)",
+        "perks": [
+            "۵۰٪ افزایش پاداش روزانه",
+            "بدون کارمزد بازار",
+            "برداشت با اولویت و صف سریع‌تر",
+            "بج طلایی اختصاصی + دسترسی زودهنگام به رویدادها",
+        ],
+        "options": {3: 100, 6: 135},
+    },
+}
+
+# ============================================================
+#   رفرال (دعوت دوستان)
+# ============================================================
+REFERRAL_BONUS_NORMAL = 100     # لیبر برای هر دعوت‌شونده‌ی عادی
+REFERRAL_BONUS_PREMIUM = 150    # لیبر برای هر دعوت‌شونده‌ای که کاربر پرمیوم تلگرام است
+
+# ============================================================
+#   برداشت TON
+# ============================================================
+MIN_WITHDRAW_LIBER = 2000
+WITHDRAW_FEE_PERCENT = 5
+WITHDRAW_PENDING_TEXT = (
+    "✅ درخواست برداشت شما با موفقیت ثبت شد و برای بررسی ادمین ارسال گردید.\n"
+    "⏳ وضعیت: در حال بررسی — به محض تایید و انجام تراکنش، پیام موفقیت برایتان ارسال می‌شود."
+)
+
+# ============================================================
+#   ضد اسپم
+# ============================================================
+SPAM_WINDOW_SECONDS = 8          # بازه‌ی زمانی بررسی
+SPAM_MAX_ACTIONS = 10            # حداکثر تعداد کلیک/پیام مجاز در بازه
+SPAM_WARN_LIMIT = 3              # تعداد اخطار قبل از بن
+
+# ============================================================
+#   رقابت آنلاین رنک‌بندی‌شده (مثل کالاف)
+# ============================================================
+RANKS = [
+    "🔰 سواپ وان",
+    "🔰 سواپ تو",
+    "🔰 سواپ لجند",
+    "🐉 دراگون",
+    "🐉 دراگون لجند",
+    "🔷 لیبر",
+    "🔷 لیبر لجند",
+    "💎 الماس",
+    "💎 الماسی فول لجند",
+]
+MAX_RANK_INDEX = len(RANKS) - 1
+
+MATCH_ENTRY_FEE = 15                # هزینه‌ی ورود به هر مسابقه (LIBER)
+MATCH_BASE_REWARD = 30              # جایزه‌ی برد در رنک اول (هر رنک بالاتر ×۲)
+MATCH_QUEUE_CHECK_SECONDS = 120     # هر چند ثانیه صف مسابقه چک شود
+MATCH_BOT_FALLBACK_SECONDS = 300    # بعد از این مدت بدون حریف واقعی، با ربات بازی می‌شود
+MATCH_MIN_SECONDS_BETWEEN_STARTS = 10
+
+TOURNAMENT_INTERVAL_SECONDS = 30 * 86400
+TOURNAMENT_REWARDS = {1: 2000, 2: 1500, 3: 1000}
+
+COMPETITION_DAILY_MISSION_WINS = 1
+COMPETITION_DAILY_MISSION_REWARD = 40
+
+
+def wins_required_for_rank(rank_index: int) -> int:
+    """تعداد برد لازم برای ارتقا از این رنک به رنک بعد."""
+    return 10 + rank_index * 5
+
+
+def medals_per_win_for_rank(rank_index: int) -> float:
+    """مدال دریافتی به ازای هر برد در این رنک."""
+    return max(5.0, 10 - rank_index * 0.5)
+
+
+def reward_for_rank(rank_index: int) -> int:
+    return MATCH_BASE_REWARD * (2 ** rank_index)
+
+
+# ============================================================
+#  SECTION 2: DATABASE — لایه‌ی دیتابیس (SQLite)
+# ============================================================
+# -*- coding: utf-8 -*-
+"""
+لایه‌ی دیتابیس ربات LIBER (SQLite)
+تمام تعامل با دیتابیس از این فایل عبور می‌کند تا بقیه‌ی فایل‌ها تمیز بمانند.
+"""
 import sqlite3
-import random
-import time
-import os
-from datetime import datetime, timedelta
-from contextlib import closing
+from contextlib import contextmanager
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    ContextTypes,
-    filters,
-)
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-# All secrets are read from environment variables so nothing sensitive is
-# committed to GitHub. Set these in Railway's "Variables" tab:
-#   BOT_TOKEN         -> your bot token from @BotFather
-#   REQUIRED_CHANNEL  -> e.g. @Libercoin1  (leave unset/empty to disable)
-#   ADMIN_IDS         -> comma-separated numeric Telegram user IDs
-
-BOT_TOKEN ="8818731091:AAHD4vNWYdFfDD6C0__60vsd4hCDumRuB-Y"
-DB_PATH = os.environ.get("DB_PATH", "liber.db")
-
-_admin_ids_env = os.environ.get("ADMIN_IDS", "6188951798")
-ADMIN_IDS = [int(x.strip()) for x in _admin_ids_env.split(",") if x.strip()]
-
-REQUIRED_CHANNEL = os.environ.get("REQUIRED_CHANNEL", "@Libercoin1") or None
-
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-)
-logger = logging.getLogger("liber")
-
-# ---------------------------------------------------------------------------
-# Database layer
-# ---------------------------------------------------------------------------
-
+@contextmanager
 def get_conn():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
 
 def init_db():
-    with closing(get_conn()) as conn, conn:
-        conn.execute("""
+    with get_conn() as conn:
+        c = conn.cursor()
+
+        c.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
             username TEXT,
             first_name TEXT,
-            joined_at TEXT,
-            level INTEGER DEFAULT 1,
-            xp INTEGER DEFAULT 0,
-            liber REAL DEFAULT 0,
-            coin REAL DEFAULT 50,
-            energy INTEGER DEFAULT 100,
-            title TEXT DEFAULT 'تازه‌وارد',
-            bio TEXT DEFAULT '',
-            avatar TEXT DEFAULT '👤',
-            country_id INTEGER,
+            coin INTEGER NOT NULL DEFAULT 200,
+            liber REAL NOT NULL DEFAULT 0,
+            diamond INTEGER NOT NULL DEFAULT 0,
+            xp INTEGER NOT NULL DEFAULT 0,
+            level INTEGER NOT NULL DEFAULT 1,
+            bank_balance REAL NOT NULL DEFAULT 0,
+            bank_last_interest INTEGER NOT NULL DEFAULT 0,
+            loan_balance REAL NOT NULL DEFAULT 0,
+            vip_tier TEXT,
+            subscription_tier TEXT,
+            subscription_expires INTEGER,
             referred_by INTEGER,
-            banned INTEGER DEFAULT 0,
-            last_daily TEXT
+            warnings INTEGER NOT NULL DEFAULT 0,
+            is_banned INTEGER NOT NULL DEFAULT 0,
+            joined_at INTEGER NOT NULL,
+            last_daily INTEGER NOT NULL DEFAULT 0
         )
         """)
 
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS countries (
-            country_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            owner_id INTEGER UNIQUE,
-            name TEXT,
-            flag TEXT DEFAULT '🏳',
-            population INTEGER DEFAULT 1000,
-            satisfaction INTEGER DEFAULT 70,
-            budget REAL DEFAULT 1000,
-            tech_level INTEGER DEFAULT 1,
-            defense_level INTEGER DEFAULT 1,
-            created_at TEXT,
-            FOREIGN KEY(owner_id) REFERENCES users(user_id)
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS market_state (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            price REAL NOT NULL,
+            updated_at INTEGER NOT NULL
         )
         """)
 
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS buildings (
-            building_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            country_id INTEGER,
-            type TEXT,
-            level INTEGER DEFAULT 1,
-            FOREIGN KEY(country_id) REFERENCES countries(country_id)
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS withdrawal_requests (
+            request_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            liber_amount REAL NOT NULL,
+            fee REAL NOT NULL,
+            ton_amount REAL NOT NULL,
+            wallet_address TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at INTEGER NOT NULL,
+            resolved_at INTEGER,
+            resolved_by INTEGER
         )
         """)
 
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS market (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            price REAL DEFAULT 10.0,
-            updated_at TEXT
-        )
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS market_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            price REAL,
-            recorded_at TEXT
-        )
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS missions (
-            mission_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            mission_type TEXT,
-            description TEXT,
-            reward_liber REAL,
-            reward_xp INTEGER,
-            completed INTEGER DEFAULT 0,
-            created_at TEXT,
-            FOREIGN KEY(user_id) REFERENCES users(user_id)
-        )
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS achievements (
-            achievement_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            name TEXT,
-            rarity TEXT,
-            achieved_at TEXT,
-            FOREIGN KEY(user_id) REFERENCES users(user_id)
-        )
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS alliances (
-            alliance_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE,
-            leader_id INTEGER,
-            treasury REAL DEFAULT 0,
-            created_at TEXT
-        )
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS alliance_members (
-            user_id INTEGER PRIMARY KEY,
-            alliance_id INTEGER,
-            joined_at TEXT,
-            FOREIGN KEY(alliance_id) REFERENCES alliances(alliance_id)
-        )
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS logs (
-            log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            action TEXT,
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS transactions (
+            tx_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            kind TEXT NOT NULL,
             detail TEXT,
-            created_at TEXT
+            created_at INTEGER NOT NULL
         )
         """)
 
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS bank_deposits (
-            deposit_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            amount REAL,
-            created_at TEXT,
-            matures_at TEXT,
-            rate REAL,
-            claimed INTEGER DEFAULT 0,
-            FOREIGN KEY(user_id) REFERENCES users(user_id)
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS referrals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            inviter_id INTEGER NOT NULL,
+            invitee_id INTEGER NOT NULL UNIQUE,
+            bonus_liber REAL NOT NULL,
+            created_at INTEGER NOT NULL
         )
         """)
 
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS investments (
-            investment_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            project TEXT,
-            amount REAL,
-            expected_return REAL,
-            created_at TEXT,
-            matures_at TEXT,
-            claimed INTEGER DEFAULT 0,
-            FOREIGN KEY(user_id) REFERENCES users(user_id)
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS star_payments (
+            payment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            tier TEXT NOT NULL,
+            months INTEGER NOT NULL,
+            stars_amount INTEGER NOT NULL,
+            telegram_payment_charge_id TEXT,
+            created_at INTEGER NOT NULL
         )
         """)
 
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS shop_purchases (
-            purchase_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            item TEXT,
-            cost_liber REAL,
-            purchased_at TEXT,
-            FOREIGN KEY(user_id) REFERENCES users(user_id)
-        )
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS vip_status (
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS comp_profile (
             user_id INTEGER PRIMARY KEY,
-            tier TEXT,
-            activated_at TEXT,
-            expires_at TEXT,
-            FOREIGN KEY(user_id) REFERENCES users(user_id)
+            rank_index INTEGER NOT NULL DEFAULT 0,
+            medals REAL NOT NULL DEFAULT 0,
+            wins INTEGER NOT NULL DEFAULT 0,
+            losses INTEGER NOT NULL DEFAULT 0,
+            draws INTEGER NOT NULL DEFAULT 0,
+            season_medals REAL NOT NULL DEFAULT 0
         )
         """)
 
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS events (
-            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            description TEXT,
-            started_at TEXT,
-            ends_at TEXT,
-            effect TEXT
-        )
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS seasons (
-            season_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            started_at TEXT,
-            ends_at TEXT,
-            active INTEGER DEFAULT 1
-        )
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS season_scores (
-            user_id INTEGER,
-            season_id INTEGER,
-            points INTEGER DEFAULT 0,
-            league TEXT DEFAULT 'bronze',
-            PRIMARY KEY (user_id, season_id),
-            FOREIGN KEY(user_id) REFERENCES users(user_id),
-            FOREIGN KEY(season_id) REFERENCES seasons(season_id)
-        )
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS game_history (
-            game_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            game_type TEXT,
-            bet REAL,
-            result REAL,
-            played_at TEXT,
-            FOREIGN KEY(user_id) REFERENCES users(user_id)
-        )
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS chest_cooldowns (
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS comp_queue (
             user_id INTEGER PRIMARY KEY,
-            last_chest TEXT,
-            FOREIGN KEY(user_id) REFERENCES users(user_id)
+            rank_index INTEGER NOT NULL,
+            joined_at INTEGER NOT NULL
         )
         """)
 
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS auctions (
-            auction_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            item_name TEXT,
-            current_price REAL,
-            current_winner INTEGER,
-            active INTEGER DEFAULT 1,
-            created_at TEXT,
-            ends_at TEXT
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS comp_season (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            season_number INTEGER NOT NULL DEFAULT 1,
+            started_at INTEGER NOT NULL
         )
         """)
 
-        conn.execute("""
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_achievements_unique
-        ON achievements(user_id, name)
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS cheat_flags (
-            user_id INTEGER PRIMARY KEY,
-            flag_count INTEGER DEFAULT 0,
-            last_flag_at TEXT
-        )
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS matches (
-            match_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            player_id INTEGER,
-            sport TEXT,
-            tier TEXT,
-            player_score INTEGER,
-            opponent_score INTEGER,
-            result TEXT,
-            created_at TEXT
-        )
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS tournament (
-            id INTEGER PRIMARY KEY,
-            started_at TEXT
-        )
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS market_volume (
-            hour_bucket TEXT PRIMARY KEY,
-            units_bought INTEGER DEFAULT 0,
-            units_sold INTEGER DEFAULT 0
-        )
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS daily_coupons (
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS comp_daily_mission (
             user_id INTEGER,
-            coupon_date TEXT,
-            claimed INTEGER DEFAULT 0,
-            PRIMARY KEY (user_id, coupon_date)
+            mission_date TEXT,
+            wins_needed INTEGER NOT NULL DEFAULT 1,
+            wins_done INTEGER NOT NULL DEFAULT 0,
+            claimed INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (user_id, mission_date)
         )
         """)
 
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS chest_daily_limit (
-            user_id INTEGER,
-            chest_key TEXT,
-            purchase_date TEXT,
-            count INTEGER DEFAULT 0,
-            PRIMARY KEY (user_id, chest_key, purchase_date)
-        )
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS gift_codes (
-            code TEXT PRIMARY KEY,
-            reward_liber REAL,
-            max_uses INTEGER,
-            used_count INTEGER DEFAULT 0,
-            created_at TEXT
-        )
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS gift_redemptions (
-            code TEXT,
-            user_id INTEGER,
-            redeemed_at TEXT,
-            PRIMARY KEY (code, user_id)
-        )
-        """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS predictions (
-            pred_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            direction TEXT,
-            start_price REAL,
-            bet_amount REAL,
-            status TEXT DEFAULT 'open',
-            created_at TEXT
-        )
-        """)
-
-        # safe column migrations (ignore if already exist)
-        for ddl in (
-            "ALTER TABLE users ADD COLUMN research_level INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN defense_level INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN login_streak INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN sport TEXT DEFAULT ''",
-            "ALTER TABLE users ADD COLUMN football_speed INTEGER DEFAULT 1",
-            "ALTER TABLE users ADD COLUMN football_accuracy INTEGER DEFAULT 1",
-            "ALTER TABLE users ADD COLUMN football_shot INTEGER DEFAULT 1",
-            "ALTER TABLE users ADD COLUMN football_technique INTEGER DEFAULT 1",
-            "ALTER TABLE users ADD COLUMN basketball_jump INTEGER DEFAULT 1",
-            "ALTER TABLE users ADD COLUMN basketball_power INTEGER DEFAULT 1",
-            "ALTER TABLE users ADD COLUMN basketball_body INTEGER DEFAULT 1",
-            "ALTER TABLE users ADD COLUMN basketball_accuracy INTEGER DEFAULT 1",
-            "ALTER TABLE users ADD COLUMN rank_points INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN matches_played INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN matches_won INTEGER DEFAULT 0",
-        ):
-            try:
-                conn.execute(ddl)
-            except sqlite3.OperationalError:
-                pass
-
-        # seed market price if empty
-        row = conn.execute("SELECT COUNT(*) as c FROM market").fetchone()
-        if row["c"] == 0:
-            conn.execute(
-                "INSERT INTO market (price, updated_at) VALUES (?, ?)",
-                (10.0, datetime.utcnow().isoformat()),
+        row = c.execute("SELECT 1 FROM comp_season WHERE id = 1").fetchone()
+        if not row:
+            c.execute(
+                "INSERT INTO comp_season (id, season_number, started_at) VALUES (1, 1, ?)",
+                (int(time.time()),),
             )
 
-        row = conn.execute("SELECT COUNT(*) as c FROM tournament").fetchone()
-        if row["c"] == 0:
-            conn.execute(
-                "INSERT INTO tournament (id, started_at) VALUES (1, ?)",
-                (datetime.utcnow().isoformat(),),
+        row = c.execute("SELECT 1 FROM market_state WHERE id = 1").fetchone()
+        if not row:
+            c.execute(
+                "INSERT INTO market_state (id, price, updated_at) VALUES (1, ?, ?)",
+                (MARKET_BASE_PRICE, int(time.time())),
             )
 
-    logger.info("Database initialized.")
 
-def log_action(user_id: int, action: str, detail: str = ""):
-    with closing(get_conn()) as conn, conn:
+# ---------------------------------------------------------------
+#  کاربران
+# ---------------------------------------------------------------
+def get_user(user_id):
+    with get_conn() as conn:
+        return conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)).fetchone()
+
+
+def ensure_user(user_id, username, first_name, referred_by=None):
+    with get_conn() as conn:
+        existing = conn.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE users SET username = ?, first_name = ? WHERE user_id = ?",
+                (username, first_name, user_id),
+            )
+            return False
         conn.execute(
-            "INSERT INTO logs (user_id, action, detail, created_at) VALUES (?, ?, ?, ?)",
-            (user_id, action, detail, datetime.utcnow().isoformat()),
-        )
-
-# ---------------------------------------------------------------------------
-# User helpers
-# ---------------------------------------------------------------------------
-
-def get_user(user_id: int):
-    with closing(get_conn()) as conn:
-        return conn.execute(
-            "SELECT * FROM users WHERE user_id = ?", (user_id,)
-        ).fetchone()
-
-def create_user_if_missing(user_id: int, username: str, first_name: str, referred_by: int = None):
-    existing = get_user(user_id)
-    if existing:
-        return existing, False
-
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            """INSERT INTO users (user_id, username, first_name, joined_at, referred_by)
+            """INSERT INTO users (user_id, username, first_name, referred_by, joined_at)
                VALUES (?, ?, ?, ?, ?)""",
-            (user_id, username, first_name, datetime.utcnow().isoformat(), referred_by),
+            (user_id, username, first_name, referred_by, int(time.time())),
         )
+        return True
 
-    log_action(user_id, "REGISTER", f"username={username}")
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            """INSERT OR IGNORE INTO achievements (user_id, name, rarity, achieved_at)
-               VALUES (?, 'اولین قدم', 'عادی', ?)""",
-            (user_id, datetime.utcnow().isoformat()),
-        )
-    return get_user(user_id), True
 
-def update_user_field(user_id: int, field: str, value):
-    allowed_fields = {
-        "level", "xp", "liber", "coin", "energy", "title",
-        "bio", "avatar", "country_id", "banned", "last_daily"
-    }
-    if field not in allowed_fields:
-        raise ValueError("Field not allowed")
-    with closing(get_conn()) as conn, conn:
-        conn.execute(f"UPDATE users SET {field} = ? WHERE user_id = ?", (value, user_id))
-
-def add_currency(user_id: int, liber: float = 0, coin: float = 0, energy: int = 0):
-    with closing(get_conn()) as conn, conn:
+def update_balance(user_id, coin=0, liber=0, diamond=0, xp=0):
+    with get_conn() as conn:
         conn.execute(
             """UPDATE users
-               SET liber = liber + ?, coin = coin + ?, energy = energy + ?
+               SET coin = coin + ?, liber = liber + ?, diamond = diamond + ?, xp = xp + ?
                WHERE user_id = ?""",
-            (liber, coin, energy, user_id),
+            (coin, liber, diamond, xp, user_id),
         )
+        row = conn.execute("SELECT xp, level FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        if row:
+            new_level = 1 + row["xp"] // XP_PER_LEVEL
+            if new_level != row["level"]:
+                conn.execute("UPDATE users SET level = ? WHERE user_id = ?", (new_level, user_id))
 
-def add_xp(user_id: int, amount: int):
-    user = get_user(user_id)
-    if not user:
-        return
-    new_xp = user["xp"] + amount
-    new_level = user["level"]
-    xp_needed = new_level * 100
 
-    while new_xp >= xp_needed:
-        new_xp -= xp_needed
-        new_level += 1
-        xp_needed = new_level * 100
-
-    with closing(get_conn()) as conn, conn:
+def log_transaction(user_id, kind, detail=""):
+    with get_conn() as conn:
         conn.execute(
-            "UPDATE users SET xp = ?, level = ? WHERE user_id = ?",
-            (new_xp, new_level, user_id),
+            "INSERT INTO transactions (user_id, kind, detail, created_at) VALUES (?, ?, ?, ?)",
+            (user_id, kind, detail, int(time.time())),
         )
 
-    return new_level
 
-# ---------------------------------------------------------------------------
-# Market helpers (virtual currency price simulation - for fun only)
-# ---------------------------------------------------------------------------
+def add_warning(user_id):
+    with get_conn() as conn:
+        conn.execute("UPDATE users SET warnings = warnings + 1 WHERE user_id = ?", (user_id,))
+        row = conn.execute("SELECT warnings FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        warnings = row["warnings"] if row else 0
+        banned = False
+        if warnings >= SPAM_WARN_LIMIT:
+            conn.execute("UPDATE users SET is_banned = 1 WHERE user_id = ?", (user_id,))
+            banned = True
+        return warnings, banned
 
+
+def is_banned(user_id):
+    with get_conn() as conn:
+        row = conn.execute("SELECT is_banned FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        return bool(row and row["is_banned"])
+
+
+def set_ban(user_id, banned: bool):
+    with get_conn() as conn:
+        conn.execute("UPDATE users SET is_banned = ? WHERE user_id = ?", (1 if banned else 0, user_id))
+
+
+# ---------------------------------------------------------------
+#  بازار
+# ---------------------------------------------------------------
 def get_market_price():
-    with closing(get_conn()) as conn:
-        row = conn.execute("SELECT * FROM market ORDER BY id DESC LIMIT 1").fetchone()
-        return row["price"] if row else 10.0
-
-def _current_hour_bucket() -> str:
-    return datetime.utcnow().strftime("%Y-%m-%d-%H")
+    with get_conn() as conn:
+        row = conn.execute("SELECT price FROM market_state WHERE id = 1").fetchone()
+        return row["price"] if row else MARKET_BASE_PRICE
 
 
-def record_trade_volume(units: int, is_buy: bool):
-    bucket = _current_hour_bucket()
-    col = "units_bought" if is_buy else "units_sold"
-    with closing(get_conn()) as conn, conn:
+def fluctuate_market(low, high):
+    with get_conn() as conn:
+        row = conn.execute("SELECT price FROM market_state WHERE id = 1").fetchone()
+        price = row["price"] if row else MARKET_BASE_PRICE
+        change_pct = random.uniform(low, high)
+        new_price = max(1.0, round(price * (1 + change_pct), 2))
         conn.execute(
-            f"""INSERT INTO market_volume (hour_bucket, {col}) VALUES (?, ?)
-                ON CONFLICT(hour_bucket) DO UPDATE SET {col} = {col} + excluded.{col}""",
-            (bucket, units),
+            "UPDATE market_state SET price = ?, updated_at = ? WHERE id = 1",
+            (new_price, int(time.time())),
+        )
+        return price, new_price, change_pct
+
+
+# ---------------------------------------------------------------
+#  بانک
+# ---------------------------------------------------------------
+def bank_deposit(user_id, amount):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET coin = coin - ?, bank_balance = bank_balance + ? WHERE user_id = ?",
+            (amount, amount, user_id),
         )
 
 
-def fluctuate_market():
-    """Hourly price update driven by REAL accumulated buy/sell pressure from the
-    previous hour — more buyers push the price up, more sellers push it down.
-    A small random drift is added on top so quiet hours still feel alive."""
-    current = get_market_price()
-    bucket = _current_hour_bucket()
+def bank_withdraw_all(user_id):
+    with get_conn() as conn:
+        row = conn.execute("SELECT bank_balance FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        total = row["bank_balance"] if row else 0
+        if total > 0:
+            conn.execute(
+                "UPDATE users SET coin = coin + ?, bank_balance = 0 WHERE user_id = ?",
+                (total, user_id),
+            )
+        return total
 
-    with closing(get_conn()) as conn:
+
+def apply_daily_interest(user_id):
+    with get_conn() as conn:
         row = conn.execute(
-            "SELECT units_bought, units_sold FROM market_volume WHERE hour_bucket = ?", (bucket,)
+            "SELECT bank_balance, bank_last_interest FROM users WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        if not row or row["bank_balance"] <= 0:
+            return 0
+        now = int(time.time())
+        if now - row["bank_last_interest"] < 86400:
+            return 0
+        interest = round(row["bank_balance"] * BANK_INTEREST_PERCENT / 100, 2)
+        conn.execute(
+            "UPDATE users SET bank_balance = bank_balance + ?, bank_last_interest = ? WHERE user_id = ?",
+            (interest, now, user_id),
+        )
+        return interest
+
+
+# ---------------------------------------------------------------
+#  ماموریت روزانه‌ی اجباری (گیت ورود به صندوق رایگان و رقابت آنلاین)
+# ---------------------------------------------------------------
+def has_done_daily_mission(user_id) -> bool:
+    """True اگر کاربر ظرف ۲۴ ساعت اخیر ماموریت روزانه را انجام داده باشد
+    (دقیقاً همان پنجره‌ی زمانی که daily_mission_callback برای claim استفاده می‌کند)."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT last_daily FROM users WHERE user_id = ?", (user_id,)).fetchone()
+    if not row or not row["last_daily"]:
+        return False
+    return (int(time.time()) - row["last_daily"]) < 86400
+
+
+# ---------------------------------------------------------------
+#  برداشت TON
+# ---------------------------------------------------------------
+def create_withdraw_request(user_id, liber_amount, fee, ton_amount, wallet_address):
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO withdrawal_requests
+               (user_id, liber_amount, fee, ton_amount, wallet_address, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (user_id, liber_amount, fee, ton_amount, wallet_address, int(time.time())),
+        )
+        conn.execute(
+            "UPDATE users SET liber = liber - ? WHERE user_id = ?",
+            (liber_amount, user_id),
+        )
+        return cur.lastrowid
+
+
+def list_pending_withdrawals(limit=20):
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT * FROM withdrawal_requests WHERE status = 'pending' ORDER BY created_at ASC LIMIT ?",
+            (limit,),
+        ).fetchall()
+
+
+def get_withdraw_request(request_id):
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT * FROM withdrawal_requests WHERE request_id = ?", (request_id,)
         ).fetchone()
 
-    bought = row["units_bought"] if row else 0
-    sold = row["units_sold"] if row else 0
-    net_pressure = bought - sold  # positive = net demand, negative = net supply
 
-    # each net unit of pressure moves price ~0.3%, capped at +/-15% per hour
-    pressure_pct = max(-0.15, min(0.15, net_pressure * 0.003))
-    random_drift = random.uniform(-0.02, 0.02)  # small ambient noise
-    change_pct = pressure_pct + random_drift
-
-    new_price = max(0.5, round(current * (1 + change_pct), 4))
-
-    with closing(get_conn()) as conn, conn:
+def approve_withdraw_request(request_id, admin_id):
+    with get_conn() as conn:
         conn.execute(
-            "INSERT INTO market (price, updated_at) VALUES (?, ?)",
-            (new_price, datetime.utcnow().isoformat()),
-        )
-        conn.execute(
-            "INSERT INTO market_history (price, recorded_at) VALUES (?, ?)",
-            (new_price, datetime.utcnow().isoformat()),
+            """UPDATE withdrawal_requests
+               SET status = 'approved', resolved_at = ?, resolved_by = ?
+               WHERE request_id = ?""",
+            (int(time.time()), admin_id, request_id),
         )
 
-    logger.info(f"Market pressure: bought={bought} sold={sold} net={net_pressure} change={change_pct:+.2%}")
-    return new_price, bought, sold
 
-# ---------------------------------------------------------------------------
-# Keyboards
-# ---------------------------------------------------------------------------
+def reject_withdraw_request(request_id, admin_id):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT user_id, liber_amount FROM withdrawal_requests WHERE request_id = ?",
+            (request_id,),
+        ).fetchone()
+        conn.execute(
+            """UPDATE withdrawal_requests
+               SET status = 'rejected', resolved_at = ?, resolved_by = ?
+               WHERE request_id = ?""",
+            (int(time.time()), admin_id, request_id),
+        )
+        if row:
+            # لیبر به کاربر برگردانده می‌شود چون درخواست رد شده
+            conn.execute(
+                "UPDATE users SET liber = liber + ? WHERE user_id = ?",
+                (row["liber_amount"], row["user_id"]),
+            )
 
-def main_menu_keyboard():
-    keyboard = [
-        ["👤 پروفایل", "🌍 کشور", "💰 کیف پول"],
-        ["💹 بازار LIBER", "🏦 بانک", "🏪 فروشگاه"],
-        ["🎁 صندوق‌ها", "🎯 مأموریت‌ها", "🎮 بازی‌ها"],
-        ["🏆 رتبه‌بندی", "🎖 دستاوردها", "🤝 اتحاد"],
-        ["🏷 مزایده", "👥 دعوت دوستان", "💼 شغل"],
-        ["⚔️ جنگ کلن", "⚔️ رقابت آنلاین", "🔬 تحقیقات"],
-        ["🛡 دفاع", "🌌 اکتشاف", "🤖 مشاور هوشمند"],
-        ["📰 اخبار جهان", "🎟 پیش‌بینی قیمت", "⚙ تنظیمات"],
-        ["❓ راهنما"],
+
+# ---------------------------------------------------------------
+#  اشتراک استارز
+# ---------------------------------------------------------------
+def grant_subscription(user_id, tier, months, stars_amount, charge_id):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT subscription_expires FROM users WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        now = int(time.time())
+        base = row["subscription_expires"] if row and row["subscription_expires"] and row["subscription_expires"] > now else now
+        new_expiry = base + months * 30 * 86400
+        conn.execute(
+            "UPDATE users SET subscription_tier = ?, subscription_expires = ? WHERE user_id = ?",
+            (tier, new_expiry, user_id),
+        )
+        conn.execute(
+            """INSERT INTO star_payments (user_id, tier, months, stars_amount, telegram_payment_charge_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (user_id, tier, months, stars_amount, charge_id, now),
+        )
+        return new_expiry
+
+
+# ---------------------------------------------------------------
+#  رفرال
+# ---------------------------------------------------------------
+def register_referral(inviter_id, invitee_id, bonus_liber):
+    with get_conn() as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM referrals WHERE invitee_id = ?", (invitee_id,)
+        ).fetchone()
+        if exists:
+            return False
+        conn.execute(
+            """INSERT INTO referrals (inviter_id, invitee_id, bonus_liber, created_at)
+               VALUES (?, ?, ?, ?)""",
+            (inviter_id, invitee_id, bonus_liber, int(time.time())),
+        )
+        conn.execute(
+            "UPDATE users SET liber = liber + ? WHERE user_id = ?",
+            (bonus_liber, inviter_id),
+        )
+        return True
+
+
+def count_referrals(user_id):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM referrals WHERE inviter_id = ?", (user_id,)
+        ).fetchone()
+        return row["c"] if row else 0
+
+
+# ---------------------------------------------------------------
+#  رقابت آنلاین رنک‌بندی‌شده
+# ---------------------------------------------------------------
+def get_comp_profile(user_id):
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM comp_profile WHERE user_id = ?", (user_id,)).fetchone()
+        if row:
+            return row
+        conn.execute("INSERT INTO comp_profile (user_id) VALUES (?)", (user_id,))
+        return conn.execute("SELECT * FROM comp_profile WHERE user_id = ?", (user_id,)).fetchone()
+
+
+def get_comp_season():
+    with get_conn() as conn:
+        return conn.execute("SELECT * FROM comp_season WHERE id = 1").fetchone()
+
+
+def comp_join_queue(user_id, rank_index):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO comp_queue (user_id, rank_index, joined_at) VALUES (?, ?, ?)",
+            (user_id, rank_index, int(time.time())),
+        )
+
+
+def comp_leave_queue(user_id):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM comp_queue WHERE user_id = ?", (user_id,))
+
+
+def comp_is_queued(user_id):
+    with get_conn() as conn:
+        return bool(conn.execute("SELECT 1 FROM comp_queue WHERE user_id = ?", (user_id,)).fetchone())
+
+
+def comp_find_opponent(user_id, rank_index):
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT * FROM comp_queue WHERE rank_index = ? AND user_id != ? LIMIT 1",
+            (rank_index, user_id),
+        ).fetchone()
+
+
+def comp_all_queued():
+    with get_conn() as conn:
+        return conn.execute("SELECT * FROM comp_queue ORDER BY joined_at ASC").fetchall()
+
+
+def comp_record_result(user_id, outcome, medals_gain=0, liber_gain=0):
+    """outcome: 'win' | 'loss' | 'draw'"""
+    with get_conn() as conn:
+        if outcome == "win":
+            conn.execute(
+                "UPDATE comp_profile SET wins = wins + 1, medals = medals + ?, season_medals = season_medals + ? WHERE user_id = ?",
+                (medals_gain, medals_gain, user_id),
+            )
+        elif outcome == "draw":
+            conn.execute(
+                "UPDATE comp_profile SET draws = draws + 1, medals = medals + ?, season_medals = season_medals + ? WHERE user_id = ?",
+                (medals_gain, medals_gain, user_id),
+            )
+        else:
+            conn.execute("UPDATE comp_profile SET losses = losses + 1 WHERE user_id = ?", (user_id,))
+        if liber_gain:
+            conn.execute("UPDATE users SET liber = liber + ? WHERE user_id = ?", (liber_gain, user_id))
+
+
+def comp_promote_if_ready(user_id, wins_required_fn, medals_per_win_fn, max_rank_index):
+    profile = get_comp_profile(user_id)
+    if profile["rank_index"] >= max_rank_index:
+        return None
+    needed_wins = wins_required_fn(profile["rank_index"])
+    threshold = needed_wins * medals_per_win_fn(profile["rank_index"])
+    if profile["medals"] >= threshold:
+        new_rank = profile["rank_index"] + 1
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE comp_profile SET rank_index = ?, medals = 0 WHERE user_id = ?",
+                (new_rank, user_id),
+            )
+        return new_rank
+    return None
+
+
+def comp_top_season(limit=10):
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT user_id, rank_index, season_medals FROM comp_profile ORDER BY season_medals DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+
+
+def comp_reset_season():
+    with get_conn() as conn:
+        season = conn.execute("SELECT * FROM comp_season WHERE id = 1").fetchone()
+        new_number = season["season_number"] + 1
+        conn.execute("UPDATE comp_profile SET season_medals = 0")
+        conn.execute(
+            "UPDATE comp_season SET season_number = ?, started_at = ? WHERE id = 1",
+            (new_number, int(time.time())),
+        )
+        return new_number
+
+
+def comp_daily_mission_progress(user_id):
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT * FROM comp_daily_mission WHERE user_id = ? AND mission_date = ?",
+            (user_id, today),
+        ).fetchone()
+
+
+def comp_daily_mission_add_win(user_id):
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM comp_daily_mission WHERE user_id = ? AND mission_date = ?",
+            (user_id, today),
+        ).fetchone()
+        if not row:
+            conn.execute(
+                "INSERT INTO comp_daily_mission (user_id, mission_date, wins_needed, wins_done) VALUES (?, ?, 1, 1)",
+                (user_id, today),
+            )
+        elif row["wins_done"] < row["wins_needed"]:
+            conn.execute(
+                "UPDATE comp_daily_mission SET wins_done = wins_done + 1 WHERE user_id = ? AND mission_date = ?",
+                (user_id, today),
+            )
+
+
+def comp_daily_mission_claim(user_id, reward):
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE comp_daily_mission SET claimed = 1 WHERE user_id = ? AND mission_date = ?",
+            (user_id, today),
+        )
+        conn.execute("UPDATE users SET liber = liber + ? WHERE user_id = ?", (reward, user_id))
+
+
+def all_comp_user_ids():
+    with get_conn() as conn:
+        return [r["user_id"] for r in conn.execute("SELECT user_id FROM comp_profile").fetchall()]
+
+
+# ---------------------------------------------------------------
+#  آمار برای پنل ادمین
+# ---------------------------------------------------------------
+def get_stats():
+    with get_conn() as conn:
+        total_users = conn.execute("SELECT COUNT(*) c FROM users").fetchone()["c"]
+        banned = conn.execute("SELECT COUNT(*) c FROM users WHERE is_banned = 1").fetchone()["c"]
+        total_liber = conn.execute("SELECT COALESCE(SUM(liber), 0) s FROM users").fetchone()["s"]
+        pending_withdraws = conn.execute(
+            "SELECT COUNT(*) c FROM withdrawal_requests WHERE status = 'pending'"
+        ).fetchone()["c"]
+        return {
+            "total_users": total_users,
+            "banned": banned,
+            "total_liber": round(total_liber, 2),
+            "pending_withdraws": pending_withdraws,
+        }
+
+
+def all_user_ids():
+    with get_conn() as conn:
+        return [r["user_id"] for r in conn.execute("SELECT user_id FROM users WHERE is_banned = 0").fetchall()]
+
+
+# ============================================================
+#  SECTION 3: KEYBOARDS — دکمه‌های شیشه‌ای
+# ============================================================
+# -*- coding: utf-8 -*-
+"""
+سازنده‌های کیبورد شیشه‌ای (Inline Keyboard)
+تمام تعامل کاربر با ربات از طریق دکمه است، نه دستور متنی.
+"""
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+
+def force_join_keyboard():
+    rows = [[InlineKeyboardButton(f"📢 عضویت در {ch['title']}", url=ch["url"])] for ch in FORCE_JOIN_CHANNELS]
+    rows.append([InlineKeyboardButton("✅ عضو شدم، بررسی کن", callback_data="check_join")])
+    return InlineKeyboardMarkup(rows)
+
+
+def main_menu_keyboard(is_admin=False):
+    rows = [
+        [InlineKeyboardButton("👤 پروفایل", callback_data="menu_profile"),
+         InlineKeyboardButton("💹 بازار", callback_data="menu_market")],
+        [InlineKeyboardButton("🏦 بانک", callback_data="menu_bank"),
+         InlineKeyboardButton("🏪 صندوق‌ها", callback_data="menu_chests")],
+        [InlineKeyboardButton("⭐ اشتراک ویژه", callback_data="menu_subscription"),
+         InlineKeyboardButton("👥 دعوت دوستان", callback_data="menu_referral")],
+        [InlineKeyboardButton("📤 برداشت", callback_data="withdraw_start"),
+         InlineKeyboardButton("🎯 ماموریت روزانه (اجباری)", callback_data="daily_mission")],
+        [InlineKeyboardButton("⚔️ رقابت آنلاین", callback_data="competition_menu")],
+        [InlineKeyboardButton("❓ راهنما", callback_data="menu_help")],
     ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    if is_admin:
+        rows.append([InlineKeyboardButton("👑 پنل مدیریت", callback_data="admin_panel")])
+    return InlineKeyboardMarkup(rows)
+
+
+def back_keyboard(target="main_menu"):
+    return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=target)]])
+
+
+def market_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🟢 خرید لیبر", callback_data="market_buy"),
+         InlineKeyboardButton("🔴 فروش لیبر", callback_data="market_sell")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")],
+    ])
+
+
+def bank_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("➕ واریز", callback_data="bank_deposit"),
+         InlineKeyboardButton("➖ برداشت سپرده", callback_data="bank_withdraw")],
+        [InlineKeyboardButton("💳 وام", callback_data="bank_loan")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")],
+    ])
+
+
+def chests_keyboard():
+    rows = []
+    for key, chest in CHEST_TABLE.items():
+        cost_text = "رایگان" if not chest["cost"] else ", ".join(f"{v} {k}" for k, v in chest["cost"].items())
+        rows.append([InlineKeyboardButton(f"🎁 {key} ({cost_text})", callback_data=f"chest_open:{key}")])
+    rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+def subscription_menu_keyboard():
+    rows = [[InlineKeyboardButton(tier["title"], callback_data=f"sub_tier:{key}")]
+            for key, tier in SUBSCRIPTION_TIERS.items()]
+    rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+def subscription_duration_keyboard(tier_key):
+    tier = SUBSCRIPTION_TIERS[tier_key]
+    rows = [[InlineKeyboardButton(f"{months} ماهه — {stars}⭐", callback_data=f"sub_buy:{tier_key}:{months}")]
+            for months, stars in tier["options"].items()]
+    rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="menu_subscription")])
+    return InlineKeyboardMarkup(rows)
+
+
+def withdraw_confirm_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ تایید و ارسال درخواست", callback_data="withdraw_confirm")],
+        [InlineKeyboardButton("❌ انصراف", callback_data="main_menu")],
+    ])
+
+
+def admin_withdraw_review_keyboard(request_id):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ قبول و پرداخت شد", callback_data=f"admin_wd_approve:{request_id}"),
+         InlineKeyboardButton("❌ رد کردن", callback_data=f"admin_wd_reject:{request_id}")],
+    ])
+
 
 def admin_panel_keyboard():
-    keyboard = [
-        [InlineKeyboardButton("📊 داشبورد", callback_data="admin_dashboard")],
-        [InlineKeyboardButton("👥 کاربران", callback_data="admin_users")],
-        [InlineKeyboardButton("💹 اقتصاد", callback_data="admin_economy")],
-        [InlineKeyboardButton("🚫 بن کاربر", callback_data="admin_ban")],
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📤 درخواست‌های برداشت", callback_data="admin_pending_withdraws")],
+        [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats")],
         [InlineKeyboardButton("📢 پیام همگانی", callback_data="admin_broadcast")],
-        [InlineKeyboardButton("📋 لاگ‌ها", callback_data="admin_logs")],
-    ]
-    return InlineKeyboardMarkup(keyboard)
+        [InlineKeyboardButton("🚫 مدیریت کاربر (بن/رفع بن)", callback_data="admin_user_manage")],
+        [InlineKeyboardButton("🔙 خروج از پنل", callback_data="main_menu")],
+    ])
 
-def join_channel_keyboard():
-    channel_username = REQUIRED_CHANNEL.replace("@", "")
-    keyboard = [
-        [InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{channel_username}")],
-        [InlineKeyboardButton("✅ عضو شدم", callback_data="check_join")],
-    ]
-    return InlineKeyboardMarkup(keyboard)
 
-async def is_channel_member(bot, user_id: int) -> bool:
-    """Checks membership in REQUIRED_CHANNEL. Returns True if check is disabled."""
-    if not REQUIRED_CHANNEL:
-        return True
+# ---------------------------------------------------------------
+#  رقابت آنلاین رنک‌بندی‌شده
+# ---------------------------------------------------------------
+def competition_menu_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⚔️ شروع مسابقه", callback_data="comp_start"),
+         InlineKeyboardButton("🚪 خروج از صف", callback_data="comp_leave")],
+        [InlineKeyboardButton("👤 پروفایل رقابتی", callback_data="comp_profile"),
+         InlineKeyboardButton("🏆 برترین‌ها", callback_data="comp_top")],
+        [InlineKeyboardButton("🎯 ماموریت امروز", callback_data="comp_mission"),
+         InlineKeyboardButton("📆 فصل فعلی", callback_data="comp_season")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")],
+    ])
+
+
+# ============================================================
+#  SECTION 4: ADMIN HANDLERS — پنل مدیریت
+# ============================================================
+# -*- coding: utf-8 -*-
+"""
+هندلرهای پنل مدیریت ربات LIBER
+شامل: تایید/رد برداشت TON، آمار ربات، پیام همگانی، مدیریت بن کاربر
+"""
+import logging
+
+from telegram import Update, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+from telegram.error import TelegramError
+
+
+logger = logging.getLogger("LIBER.admin")
+
+
+def is_admin(user_id: int) -> bool:
+    return user_id in ADMIN_IDS
+
+
+# ---------------------------------------------------------------
+#  ورود به پنل
+# ---------------------------------------------------------------
+async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    if not is_admin(q.from_user.id):
+        await q.answer("⛔ دسترسی غیرمجاز.", show_alert=True)
+        return
+    await q.answer()
+    await q.edit_message_text("👑 پنل مدیریت LIBER", reply_markup=admin_panel_keyboard())
+
+
+# ---------------------------------------------------------------
+#  درخواست‌های برداشت در انتظار
+# ---------------------------------------------------------------
+async def admin_pending_withdraws_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    if not is_admin(q.from_user.id):
+        await q.answer("⛔ دسترسی غیرمجاز.", show_alert=True)
+        return
+    await q.answer()
+
+    pending = list_pending_withdrawals(20)
+    if not pending:
+        await q.edit_message_text("📤 هیچ درخواست برداشت در انتظاری وجود ندارد.", reply_markup=admin_panel_keyboard())
+        return
+
+    await q.edit_message_text(f"📤 {len(pending)} درخواست در انتظار پیدا شد. یکی‌یکی ارسال می‌شوند...")
+    for req in pending:
+        u = get_user(req["user_id"])
+        name = u["first_name"] if u else str(req["user_id"])
+        text = (
+            f"📥 درخواست برداشت #{req['request_id']}\n\n"
+            f"👤 کاربر: {name} (ID: {req['user_id']})\n"
+            f"📦 مقدار: {req['liber_amount']} LIBER\n"
+            f"💰 کارمزد: {req['fee']} LIBER\n"
+            f"💎 معادل: {req['ton_amount']} TON\n"
+            f"👛 آدرس: {req['wallet_address']}"
+        )
+        try:
+            await context.bot.send_message(
+                q.from_user.id, text, reply_markup=admin_withdraw_review_keyboard(req["request_id"])
+            )
+        except TelegramError:
+            pass
+
+
+async def admin_withdraw_decision_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    admin_id = q.from_user.id
+    if not is_admin(admin_id):
+        await q.answer("⛔ دسترسی غیرمجاز.", show_alert=True)
+        return
+    await q.answer()
+
+    action, request_id_str = q.data.split(":")
+    request_id = int(request_id_str)
+    req = get_withdraw_request(request_id)
+
+    if not req:
+        await q.edit_message_text("این درخواست پیدا نشد.")
+        return
+    if req["status"] != "pending":
+        await q.edit_message_text(f"این درخواست قبلاً «{req['status']}» شده است.")
+        return
+
+    if action == "admin_wd_approve":
+        approve_withdraw_request(request_id, admin_id)
+        await q.edit_message_text(f"✅ درخواست #{request_id} تایید شد.")
+        try:
+            await context.bot.send_message(
+                req["user_id"],
+                "🎉 برداشت شما با موفقیت انجام شد!\n"
+                f"💎 مبلغ {req['ton_amount']} TON به آدرس شما ارسال گردید.\nممنون از استفاده‌ی شما 🙏",
+            )
+        except TelegramError:
+            pass
+
+    elif action == "admin_wd_reject":
+        reject_withdraw_request(request_id, admin_id)
+        await q.edit_message_text(f"❌ درخواست #{request_id} رد شد و LIBER به کاربر برگشت.")
+        try:
+            await context.bot.send_message(
+                req["user_id"],
+                f"❌ درخواست برداشت شما (#{request_id}) رد شد و {req['liber_amount']} LIBER به حساب شما بازگشت.",
+            )
+        except TelegramError:
+            pass
+
+
+# ---------------------------------------------------------------
+#  آمار
+# ---------------------------------------------------------------
+async def admin_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    if not is_admin(q.from_user.id):
+        await q.answer("⛔ دسترسی غیرمجاز.", show_alert=True)
+        return
+    await q.answer()
+    stats = get_stats()
+    price = get_market_price()
+    season = get_comp_season()
+    text = (
+        f"📊 آمار ربات\n\n"
+        f"👥 کل کاربران: {stats['total_users']}\n"
+        f"🚫 مسدودشده: {stats['banned']}\n"
+        f"🔷 مجموع LIBER در گردش: {stats['total_liber']}\n"
+        f"📤 درخواست برداشت در انتظار: {stats['pending_withdraws']}\n"
+        f"💹 قیمت بازار: {price}\n"
+        f"📆 فصل رقابت: {season['season_number']}"
+    )
+    await q.edit_message_text(text, reply_markup=admin_panel_keyboard())
+
+
+# ---------------------------------------------------------------
+#  پیام همگانی
+# ---------------------------------------------------------------
+async def admin_broadcast_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    if not is_admin(q.from_user.id):
+        await q.answer("⛔ دسترسی غیرمجاز.", show_alert=True)
+        return
+    await q.answer()
+    context.user_data["awaiting_admin"] = "broadcast_text"
+    await q.edit_message_text(
+        "📢 متن پیام همگانی را ارسال کنید (به همه‌ی کاربران فعال ارسال می‌شود):",
+        reply_markup=back_keyboard("admin_panel"),
+    )
+
+
+async def _do_broadcast(update, context, text):
+    admin_id = update.effective_user.id
+    ids = all_user_ids()
+    sent, failed = 0, 0
+    for uid in ids:
+        try:
+            await context.bot.send_message(uid, f"📢 {text}")
+            sent += 1
+        except TelegramError:
+            failed += 1
+    await update.message.reply_text(f"✅ ارسال شد به {sent} کاربر. ({failed} ناموفق)", reply_markup=admin_panel_keyboard())
+
+
+# ---------------------------------------------------------------
+#  مدیریت بن
+# ---------------------------------------------------------------
+async def admin_user_manage_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    if not is_admin(q.from_user.id):
+        await q.answer("⛔ دسترسی غیرمجاز.", show_alert=True)
+        return
+    await q.answer()
+    context.user_data["awaiting_admin"] = "ban_toggle_id"
+    await q.edit_message_text(
+        "🚫 آیدی عددی کاربری که می‌خواهید بن/رفع‌بن کنید را ارسال کنید:",
+        reply_markup=back_keyboard("admin_panel"),
+    )
+
+
+async def _do_ban_toggle(update, context, raw_text):
     try:
-        member = await bot.get_chat_member(REQUIRED_CHANNEL, user_id)
-        return member.status in ("member", "administrator", "creator")
-    except Exception as e:
-        logger.warning(f"Channel membership check failed: {e}")
+        target_id = int(raw_text.strip())
+    except ValueError:
+        await update.message.reply_text("❌ آیدی نامعتبر است.")
+        return
+    user = get_user(target_id)
+    if not user:
+        await update.message.reply_text("❌ کاربری با این آیدی پیدا نشد.")
+        return
+    new_status = not bool(user["is_banned"])
+    set_ban(target_id, new_status)
+    status_text = "مسدود" if new_status else "رفع مسدودیت"
+    await update.message.reply_text(f"✅ کاربر {target_id} {status_text} شد.", reply_markup=admin_panel_keyboard())
+
+
+# ---------------------------------------------------------------
+#  روتر پیام‌های متنی ادمین (broadcast / ban)
+# ---------------------------------------------------------------
+async def admin_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """اگر پیام متنی مربوط به یک مرحله‌ی ادمین باشد پردازش می‌کند و True برمی‌گرداند."""
+    if not is_admin(update.effective_user.id):
         return False
 
-# ---------------------------------------------------------------------------
-# Command Handlers
-# ---------------------------------------------------------------------------
+    awaiting = context.user_data.get("awaiting_admin")
+    if not awaiting:
+        return False
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
+    context.user_data["awaiting_admin"] = None
+    raw_text = update.message.text.strip()
 
-    if not await is_channel_member(context.bot, user.id):
-        await update.message.reply_text(
-            f"🔥 سلام {user.first_name}!\n\n"
-            f"برای استفاده از ربات LIBER ابتدا باید عضو کانال شوید:\n{REQUIRED_CHANNEL}\n\n"
-            "بعد از عضویت روی «✅ عضو شدم» بزنید.",
-            reply_markup=join_channel_keyboard(),
+    if awaiting == "broadcast_text":
+        await _do_broadcast(update, context, raw_text)
+        return True
+    if awaiting == "ban_toggle_id":
+        await _do_ban_toggle(update, context, raw_text)
+        return True
+    return False
+
+
+# ---------------------------------------------------------------
+#  دیسپچر کال‌بک‌های ادمین
+# ---------------------------------------------------------------
+ADMIN_CALLBACKS = {
+    "admin_panel": admin_panel_callback,
+    "admin_pending_withdraws": admin_pending_withdraws_callback,
+    "admin_stats": admin_stats_callback,
+    "admin_broadcast": admin_broadcast_callback,
+    "admin_user_manage": admin_user_manage_callback,
+}
+
+
+async def admin_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    data = q.data
+
+    if data in ADMIN_CALLBACKS:
+        await ADMIN_CALLBACKS[data](update, context)
+        return
+
+    if data.startswith("admin_wd_approve:") or data.startswith("admin_wd_reject:"):
+        await admin_withdraw_decision_callback(update, context)
+
+
+# ============================================================
+#  SECTION 5: COMPETITION HANDLERS — رقابت آنلاین رنک‌بندی‌شده
+# ============================================================
+# -*- coding: utf-8 -*-
+"""
+هندلرهای رقابت آنلاین رنک‌بندی‌شده (مثل کالاف) برای ربات LIBER
+شامل: صف مسابقه‌ی واقعی، شبیه‌سازی نتیجه، ارتقای رنک، تورنمنت فصلی خودکار
+"""
+import time
+import random
+import logging
+
+from telegram import Update, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+from telegram.error import TelegramError
+
+
+logger = logging.getLogger("LIBER.competition")
+
+_last_start_time = {}  # user_id -> monotonic timestamp، ضدباگ
+
+
+# ---------------------------------------------------------------
+#  شبیه‌سازی مسابقه
+# ---------------------------------------------------------------
+def _player_power(rank_index):
+    base = 40 + rank_index * 12
+    return base + random.randint(-10, 10)
+
+
+def _play_match(power_a, power_b):
+    score_a = score_b = 0
+    for _ in range(5):
+        roll_a = power_a + random.randint(-10, 10)
+        roll_b = power_b + random.randint(-10, 10)
+        if roll_a > roll_b:
+            score_a += 1
+        elif roll_b > roll_a:
+            score_b += 1
+    if score_a == score_b:
+        return "draw", score_a, score_b
+    return ("a" if score_a > score_b else "b"), score_a, score_b
+
+
+def _apply_result(user_id, outcome):
+    """محاسبه‌ی مدال/LIBER/ارتقا برای یک بازیکن. متن نتیجه را برمی‌گرداند."""
+    profile = get_comp_profile(user_id)
+    rank_index = profile["rank_index"]
+
+    if outcome == "loss":
+        comp_record_result(user_id, "loss")
+        return "😔 باختی. فقط هزینه‌ی ورود از دست رفت، مدالی کم نشد."
+
+    medals_per_win = medals_per_win_for_rank(min(rank_index, MAX_RANK_INDEX - 1))
+
+    if outcome == "draw":
+        medals_gain = round(medals_per_win / 2, 2)
+        liber_gain = MATCH_ENTRY_FEE
+        comp_record_result(user_id, "draw", medals_gain, liber_gain)
+        text = f"⚖️ تساوی شد! +{medals_gain} مدال، {liber_gain} LIBER (هزینه‌ی ورود) برگشت."
+    else:
+        reward = reward_for_rank(rank_index)
+        comp_record_result(user_id, "win", medals_per_win, reward)
+        text = f"🏆 بردی! +{medals_per_win} مدال، +{reward} LIBER"
+        comp_daily_mission_add_win(user_id)
+
+    new_rank = comp_promote_if_ready(
+        user_id, wins_required_for_rank, medals_per_win_for_rank, MAX_RANK_INDEX
+    )
+    if new_rank is not None:
+        text += f"\n\n🎉 ارتقا! رنک جدید شما: {RANKS[new_rank]}"
+
+    log_transaction(user_id, "competition_match", outcome)
+    return text
+
+
+async def _resolve_match(bot, user_a, user_b, vs_bot):
+    """اجرای مسابقه بین دو کاربر واقعی یا یک کاربر و ربات؛ نتیجه برای هر دو ارسال می‌شود."""
+    profile_a = get_comp_profile(user_a)
+    power_a = _player_power(profile_a["rank_index"])
+
+    if vs_bot:
+        power_b = max(20, power_a + random.randint(-15, 15))
+        outcome, score_a, score_b = _play_match(power_a, power_b)
+        result = "win" if outcome == "a" else ("draw" if outcome == "draw" else "loss")
+        text_a = _apply_result(user_a, result)
+        try:
+            await bot.send_message(user_a, f"⚔️ نتیجه‌ی مسابقه با ربات: {score_a} - {score_b}\n\n{text_a}")
+        except TelegramError:
+            pass
+        return
+
+    profile_b = get_comp_profile(user_b)
+    power_b = _player_power(profile_b["rank_index"])
+    outcome, score_a, score_b = _play_match(power_a, power_b)
+
+    if outcome == "draw":
+        outcome_a, outcome_b = "draw", "draw"
+    elif outcome == "a":
+        outcome_a, outcome_b = "win", "loss"
+    else:
+        outcome_a, outcome_b = "loss", "win"
+
+    text_a = _apply_result(user_a, outcome_a)
+    text_b = _apply_result(user_b, outcome_b)
+
+    user_a_info = get_user(user_a)
+    user_b_info = get_user(user_b)
+    name_a = user_a_info["first_name"] if user_a_info else "بازیکن ۱"
+    name_b = user_b_info["first_name"] if user_b_info else "بازیکن ۲"
+
+    try:
+        await bot.send_message(user_a, f"⚔️ مسابقه با {name_b}! نتیجه: {score_a} - {score_b}\n\n{text_a}")
+    except TelegramError:
+        pass
+    try:
+        await bot.send_message(user_b, f"⚔️ مسابقه با {name_a}! نتیجه: {score_b} - {score_a}\n\n{text_b}")
+    except TelegramError:
+        pass
+
+
+# ---------------------------------------------------------------
+#  هندلرهای کاربر
+# ---------------------------------------------------------------
+async def competition_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نسخه‌ی دستوری (/competition) — همان اطلاعات منوی رقابت را با پیام معمولی می‌فرستد."""
+    profile = get_comp_profile(update.effective_user.id)
+    text = (
+        f"⚔️ رقابت آنلاین LIBER\n\n"
+        f"رنک فعلی: {RANKS[profile['rank_index']]}\n"
+        f"مدال این رنک: {profile['medals']:.1f}\n"
+        f"🏆 برد: {profile['wins']}  😔 باخت: {profile['losses']}  ⚖️ تساوی: {profile['draws']}\n\n"
+        f"هزینه‌ی ورود به هر مسابقه: {MATCH_ENTRY_FEE} LIBER"
+    )
+    await update.message.reply_text(text, reply_markup=competition_menu_keyboard())
+
+
+async def competition_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    profile = get_comp_profile(q.from_user.id)
+    text = (
+        f"⚔️ رقابت آنلاین LIBER\n\n"
+        f"رنک فعلی: {RANKS[profile['rank_index']]}\n"
+        f"مدال این رنک: {profile['medals']:.1f}\n"
+        f"🏆 برد: {profile['wins']}  😔 باخت: {profile['losses']}  ⚖️ تساوی: {profile['draws']}\n\n"
+        f"هزینه‌ی ورود به هر مسابقه: {MATCH_ENTRY_FEE} LIBER"
+    )
+    await q.edit_message_text(text, reply_markup=competition_menu_keyboard())
+
+
+async def competition_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    profile = get_comp_profile(q.from_user.id)
+    text = (
+        f"👤 پروفایل رقابتی\n\n"
+        f"رنک: {RANKS[profile['rank_index']]}\n"
+        f"مدال این رنک: {profile['medals']:.1f}\n"
+        f"مدال فصل: {profile['season_medals']:.1f}\n"
+        f"🏆 برد: {profile['wins']}  😔 باخت: {profile['losses']}  ⚖️ تساوی: {profile['draws']}"
+    )
+    await q.edit_message_text(text, reply_markup=competition_menu_keyboard())
+
+
+async def competition_top_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    rows = comp_top_season(10)
+    lines = ["🏆 برترین‌های فصل\n"]
+    for i, r in enumerate(rows, start=1):
+        u = get_user(r["user_id"])
+        name = u["first_name"] if u else str(r["user_id"])
+        lines.append(f"{i}. {name} — {RANKS[r['rank_index']]} ({r['season_medals']:.1f} مدال)")
+    text = "\n".join(lines) if rows else "هنوز کسی بازی نکرده."
+    await q.edit_message_text(text, reply_markup=competition_menu_keyboard())
+
+
+async def competition_season_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    season = get_comp_season()
+    now = int(time.time())
+    days_left = max(0, (TOURNAMENT_INTERVAL_SECONDS - (now - season["started_at"])) // 86400)
+    r = TOURNAMENT_REWARDS
+    text = (
+        f"📆 فول {season['season_number']}\n\n"
+        f"{days_left} روز تا پایان تورنمنت فصلی مانده.\n"
+        f"در پایان فصل، ۳ نفر برتر خودکار جایزه می‌گیرند:\n"
+        f"🥇 {r[1]} LIBER   🥈 {r[2]} LIBER   🥉 {r[3]} LIBER"
+    )
+    await q.edit_message_text(text, reply_markup=competition_menu_keyboard())
+
+
+async def competition_mission_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    user_id = q.from_user.id
+    row = comp_daily_mission_progress(user_id)
+
+    if not row:
+        text = f"🎯 ماموریت امروز: {COMPETITION_DAILY_MISSION_WINS} برد بگیر → {COMPETITION_DAILY_MISSION_REWARD} LIBER."
+    elif row["claimed"]:
+        text = "✅ جایزه‌ی امروز رو قبلاً گرفتی."
+    elif row["wins_done"] >= row["wins_needed"]:
+        comp_daily_mission_claim(user_id, COMPETITION_DAILY_MISSION_REWARD)
+        text = f"🎉 ماموریت کامل شد! +{COMPETITION_DAILY_MISSION_REWARD} LIBER گرفتی."
+    else:
+        text = f"🎯 پیشرفت: {row['wins_done']}/{row['wins_needed']} برد."
+
+    await q.edit_message_text(text, reply_markup=competition_menu_keyboard())
+
+
+async def competition_leave_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    comp_leave_queue(q.from_user.id)
+    await q.edit_message_text("🚪 از صف مسابقه خارج شدی.", reply_markup=competition_menu_keyboard())
+
+
+async def competition_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    user_id = q.from_user.id
+
+    now = time.monotonic()
+    last = _last_start_time.get(user_id, 0)
+    if now - last < MATCH_MIN_SECONDS_BETWEEN_STARTS:
+        await q.answer("⏳ لطفاً چند ثانیه صبر کن و دوباره امتحان کن.", show_alert=True)
+        return
+    _last_start_time[user_id] = now
+
+    if not has_done_daily_mission(user_id):
+        await q.answer(
+            "🔒 اول باید «🎯 ماموریت روزانه» رو از منوی اصلی انجام بدید تا بتونید وارد رقابت بشید.",
+            show_alert=True,
         )
         return
 
-    referred_by = None
+    user = get_user(user_id)
+    if not user or user["liber"] < MATCH_ENTRY_FEE:
+        await q.answer(f"❌ حداقل {MATCH_ENTRY_FEE} LIBER برای ورود لازم است.", show_alert=True)
+        return
 
+    if comp_is_queued(user_id):
+        await q.answer("⏳ شما در حال حاضر در صف انتظار هستید.", show_alert=True)
+        return
+
+    await q.answer()
+    profile = get_comp_profile(user_id)
+    opponent = comp_find_opponent(user_id, profile["rank_index"])
+
+    update_balance(user_id, coin=0, liber=-MATCH_ENTRY_FEE)
+
+    if opponent:
+        comp_leave_queue(opponent["user_id"])
+        await q.edit_message_text("⚔️ حریف پیدا شد! نتیجه به‌زودی برای هر دو نفر ارسال می‌شود...")
+        await _resolve_match(context.bot, user_id, opponent["user_id"], vs_bot=False)
+    else:
+        comp_join_queue(user_id, profile["rank_index"])
+        await q.edit_message_text(
+            f"⏳ وارد صف شدی! منتظر حریف هم‌رنک ({RANKS[profile['rank_index']]}) هستیم.\n"
+            f"اگر تا {MATCH_BOT_FALLBACK_SECONDS // 60} دقیقه حریف واقعی پیدا نشه، خودکار با ربات بازی می‌کنی.",
+            reply_markup=competition_menu_keyboard(),
+        )
+
+
+# ---------------------------------------------------------------
+#  کارهای زمان‌بندی‌شده
+# ---------------------------------------------------------------
+async def queue_matchmaking_job(context: ContextTypes.DEFAULT_TYPE):
+    now = int(time.time())
+    queued = comp_all_queued()
+
+    by_rank = {}
+    for row in queued:
+        by_rank.setdefault(row["rank_index"], []).append(row)
+
+    matched = set()
+    for rank_index, users in by_rank.items():
+        while len(users) >= 2:
+            u1 = users.pop(0)
+            u2 = users.pop(0)
+            comp_leave_queue(u1["user_id"])
+            comp_leave_queue(u2["user_id"])
+            matched.add(u1["user_id"])
+            matched.add(u2["user_id"])
+            await _resolve_match(context.bot, u1["user_id"], u2["user_id"], vs_bot=False)
+
+    for row in queued:
+        if row["user_id"] in matched:
+            continue
+        if now - row["joined_at"] >= MATCH_BOT_FALLBACK_SECONDS:
+            comp_leave_queue(row["user_id"])
+            await _resolve_match(context.bot, row["user_id"], None, vs_bot=True)
+
+
+async def tournament_job(context: ContextTypes.DEFAULT_TYPE):
+    season = get_comp_season()
+    now = int(time.time())
+    if now - season["started_at"] < TOURNAMENT_INTERVAL_SECONDS:
+        return
+
+    rows = comp_top_season(3)
+    for i, row in enumerate(rows, start=1):
+        if row["season_medals"] <= 0:
+            continue
+        reward = TOURNAMENT_REWARDS.get(i, 0)
+        update_balance(row["user_id"], coin=0, liber=reward)
+        log_transaction(row["user_id"], "tournament_reward", f"rank={i} reward={reward}")
+        try:
+            await context.bot.send_message(
+                row["user_id"],
+                f"🏆 تبریک! در تورنمنت فصلی رتبه‌ی {i} شدی و {reward} LIBER جایزه گرفتی! 🎉",
+            )
+        except TelegramError:
+            pass
+
+    new_season = comp_reset_season()
+
+    for user_id in all_comp_user_ids():
+        try:
+            await context.bot.send_message(
+                user_id,
+                f"📆 فصل جدید شروع شد: فول {new_season}!\nمدال فصلی همه صفر شد — رنک اصلی‌تون دست‌نخورده باقی موند.",
+            )
+        except TelegramError:
+            pass
+
+    logger.info(f"تورنمنت فصلی برگزار شد. فصل جدید: {new_season}")
+
+
+# ---------------------------------------------------------------
+#  دیسپچر کال‌بک‌های رقابت
+# ---------------------------------------------------------------
+COMPETITION_CALLBACKS = {
+    "competition_menu": competition_menu_callback,
+    "comp_profile": competition_profile_callback,
+    "comp_top": competition_top_callback,
+    "comp_season": competition_season_callback,
+    "comp_mission": competition_mission_callback,
+    "comp_leave": competition_leave_callback,
+    "comp_start": competition_start_callback,
+}
+
+
+async def competition_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = update.callback_query.data
+    handler = COMPETITION_CALLBACKS.get(data)
+    if handler:
+        await handler(update, context)
+
+
+# ============================================================
+#  SECTION 6: USER HANDLERS — منو، بازار، بانک، صندوق، اشتراک، برداشت
+# ============================================================
+# -*- coding: utf-8 -*-
+"""
+هندلرهای کاربری ربات LIBER
+شامل: منوی اصلی، پروفایل، بازار، بانک، صندوق‌ها، اشتراک استارز، برداشت، رفرال، ضد اسپم
+"""
+import time
+import random
+import logging
+
+from telegram import Update, LabeledPrice, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import ContextTypes
+from telegram.error import TelegramError
+
+
+logger = logging.getLogger("LIBER")
+
+# ---------------------------------------------------------------
+#  ضد اسپم (in-memory، ساده و سریع)
+# ---------------------------------------------------------------
+_action_log = {}  # user_id -> [timestamps]
+
+
+async def spam_guard(user_id, update: Update) -> bool:
+    """اگر کاربر اسپم کند True برمی‌گرداند (یعنی باید متوقف شود)."""
+    now = time.time()
+    hits = _action_log.setdefault(user_id, [])
+    hits[:] = [t for t in hits if now - t < SPAM_WINDOW_SECONDS]
+    hits.append(now)
+    if len(hits) <= SPAM_MAX_ACTIONS:
+        return False
+
+    warnings, banned = add_warning(user_id)
+    target = update.callback_query.message if update.callback_query else update.message
+    if banned:
+        await target.reply_text("🚫 به دلیل اسپم مکرر، حساب شما مسدود شد.")
+    else:
+        await target.reply_text(
+            f"⚠️ اخطار {warnings}/{SPAM_WARN_LIMIT}: لطفاً سریع دکمه نزنید. "
+            f"با رسیدن به {SPAM_WARN_LIMIT} اخطار، حساب مسدود می‌شود."
+        )
+    return True
+
+
+async def is_member_of_all_channels(bot, user_id) -> bool:
+    for ch in FORCE_JOIN_CHANNELS:
+        try:
+            member = await bot.get_chat_member(ch["id"], user_id)
+            if member.status in ("left", "kicked"):
+                return False
+        except TelegramError:
+            # اگر ربات ادمین کانال نباشد یا خطای دیگری رخ دهد، برای امنیت عبور نمی‌دهیم
+            return False
+    return True
+
+
+# ---------------------------------------------------------------
+#  /start
+# ---------------------------------------------------------------
+async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    referred_by = None
     if context.args:
         try:
             ref_id = int(context.args[0])
             if ref_id != user.id:
                 referred_by = ref_id
-        except (ValueError, IndexError):
+        except ValueError:
             pass
 
-    db_user, is_new = create_user_if_missing(
-        user.id, user.username or "", user.first_name or "", referred_by
-    )
+    is_new = ensure_user(user.id, user.username or "", user.first_name or "", referred_by)
 
-    if is_new:
-        if referred_by:
-            referrer = get_user(referred_by)
-            if referrer:
-                add_currency(referred_by, liber=50)  # virtual reward only
-                add_xp(referred_by, 20)
-                log_action(referred_by, "REFERRAL_BONUS", f"new_user={user.id}")
+    if is_new and referred_by and get_user(referred_by):
+        bonus = REFERRAL_BONUS_PREMIUM if user.is_premium else REFERRAL_BONUS_NORMAL
+        registered = register_referral(referred_by, user.id, bonus)
+        if registered:
+            try:
+                await context.bot.send_message(
+                    referred_by,
+                    f"🎉 یک دوست جدید با لینک شما عضو شد! {bonus} LIBER به شما اضافه شد."
+                )
+            except TelegramError:
+                pass
 
-                # second-tier bonus: whoever referred your referrer also gets a small cut
-                if referrer["referred_by"]:
-                    grandparent_id = referrer["referred_by"]
-                    grandparent = get_user(grandparent_id)
-                    if grandparent:
-                        add_currency(grandparent_id, liber=15)
-                        log_action(grandparent_id, "REFERRAL_TIER2_BONUS", f"new_user={user.id}")
-
-        display_name = user.username and f"@{user.username}" or user.first_name
-        welcome_text = (
-            f"سلام جناب {display_name} 👋\n"
-            f"به ربات LIBER خوش آمدید!\n\n"
-            "این یک بازی شبیه‌سازی اقتصادی سرگرمی است که در آن می‌توانی:\n"
-            "🌍 کشور خودت را بسازی\n"
-            "💹 در بازار LIBER معامله کنی\n"
-            "💼 با کار و مأموریت LIBER جمع کنی\n"
-            "🏆 در لیگ فصلی و رقابت آنلاین بجنگی\n"
-            "🤝 با دیگران اتحاد تشکیل بدی\n\n"
-            "⚠️ همه‌چیز اینجا باید با تلاش به‌دست بیاد — LIBER مجانی نیست!\n"
-            "تمام ارزهای این بازی (LIBER, Coin, Energy) کاملاً مجازی هستند."
+    if not await is_member_of_all_channels(context.bot, user.id):
+        await update.message.reply_text(
+            "برای استفاده از ربات ابتدا باید در کانال(های) زیر عضو شوید:",
+            reply_markup=force_join_keyboard(),
         )
-    else:
-        display_name = user.username and f"@{user.username}" or user.first_name
-        welcome_text = f"👋 خوش برگشتی جناب {display_name}!"
+        return
 
-    await update.message.reply_text(welcome_text, reply_markup=main_menu_keyboard())
+    await send_main_menu(update, context, greet=True)
+
+
+async def send_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, greet=False):
+    user = update.effective_user
+    is_admin = user.id in ADMIN_IDS
+    text = (
+        f"سلام جناب {user.first_name} 👋 به LIBER خوش آمدید!\n\n"
+        "از دکمه‌های زیر برای مدیریت دارایی، بازار، اشتراک و برداشت استفاده کنید:"
+        if greet else "🏠 منوی اصلی"
+    )
+    markup = main_menu_keyboard(is_admin=is_admin)
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, reply_markup=markup)
+    else:
+        await update.message.reply_text(text, reply_markup=markup)
+
 
 async def check_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user = query.from_user
-    await query.answer()
-
-    if not await is_channel_member(context.bot, user.id):
-        await query.answer("❌ هنوز عضو کانال نشده‌اید.", show_alert=True)
-        return
-
-    db_user, is_new = create_user_if_missing(
-        user.id, user.username or "", user.first_name or ""
-    )
-
-    await query.edit_message_text("✅ عضویت شما تایید شد! خوش آمدید به LIBER 🌍")
-    await query.message.reply_text(
-        "🌍 منوی اصلی LIBER", reply_markup=main_menu_keyboard()
-    )
-
-async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    xp_needed = user["level"] * 100
-    text = (
-        f"👤 پروفایل\n\n"
-        f"نام: {user['first_name']}\n"
-        f"سطح: {user['level']}\n"
-        f"XP: {user['xp']} / {xp_needed}\n"
-        f"لقب: {user['title']}\n"
-        f"بیوگرافی: {user['bio'] or '—'}\n"
-        f"تاریخ عضویت: {user['joined_at'][:10]}\n"
-    )
-    await update.message.reply_text(text)
-
-async def wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    text = (
-        f"💰 کیف پول (مجازی - فقط برای بازی)\n\n"
-        f"🪙 LIBER: {user['liber']:.2f}\n"
-        f"💵 Coin: {user['coin']:.2f}\n"
-        f"⚡ Energy: {user['energy']}\n"
-    )
-    await update.message.reply_text(text)
-
-async def market_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    price = get_market_price()
-    text = (
-        f"💹 بازار LIBER (شبیه‌سازی سرگرمی)\n\n"
-        f"قیمت لحظه‌ای: {price:.4f} Coin\n\n"
-        "قیمت با خرید بالا می‌ره و با فروش پایین میاد — دقیقاً مثل یه بازار واقعی، ولی کاملاً مجازی.\n\n"
-        "با دکمه‌های زیر، بدون تایپ دستور، خرید یا فروش کن:"
-    )
-    await update.message.reply_text(text, reply_markup=market_action_keyboard())
-
-def market_action_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🟢 خرید LIBER", callback_data="mkt_buy_menu"),
-         InlineKeyboardButton("🔴 فروش LIBER", callback_data="mkt_sell_menu")],
-    ])
-
-MARKET_IMPACT_PER_UNIT = 0.015
-MAX_UNITS_PER_TRADE = 99
-_pending_qty = {}
-
-def stepper_keyboard(action, qty):
-    label = "خرید" if action == "buy" else "فروش"
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("-10", callback_data=f"mkt_{action}_step_-10"),
-         InlineKeyboardButton("-1", callback_data=f"mkt_{action}_step_-1"),
-         InlineKeyboardButton(f"📦 {qty}", callback_data="mkt_noop"),
-         InlineKeyboardButton("+1", callback_data=f"mkt_{action}_step_1"),
-         InlineKeyboardButton("+10", callback_data=f"mkt_{action}_step_10")],
-        [InlineKeyboardButton(f"✅ تایید {label}", callback_data=f"mkt_{action}_confirm"),
-         InlineKeyboardButton("🔙 بازگشت", callback_data="mkt_back")],
-    ])
-
-def _simulate_trade(units, price, buy):
-    total, p = 0.0, price
-    for _ in range(units):
-        total += p
-        p = round(p * (1 + MARKET_IMPACT_PER_UNIT) if buy else max(0.5, p * (1 - MARKET_IMPACT_PER_UNIT)), 4)
-    return round(total, 4), p
-
-def execute_buy_units(user_id, units):
-    user = get_user(user_id)
-    if not user:
-        return False, "ابتدا با /start ثبت‌نام کن."
-    if not 1 <= units <= MAX_UNITS_PER_TRADE:
-        return False, f"تعداد واحد باید بین ۱ تا {MAX_UNITS_PER_TRADE} باشه."
-    price = get_market_price()
-    cost, new_price = _simulate_trade(units, price, True)
-    if user["coin"] < cost:
-        return False, f"❌ Coin کافی نیست.\nهزینه {units} واحد: {cost:.4f}\nموجودی: {user['coin']:.2f}"
-    with closing(get_conn()) as conn, conn:
-        conn.execute("UPDATE users SET coin = coin - ?, liber = liber + ? WHERE user_id = ?", (cost, units, user_id))
-        conn.execute("INSERT INTO market (price, updated_at) VALUES (?, ?)", (new_price, datetime.utcnow().isoformat()))
-    log_action(user_id, "MARKET_BUY", f"units={units} cost={cost} new_price={new_price}")
-    record_trade_volume(units, is_buy=True)
-    return True, f"🟢 خرید موفق!\n📦 {units} واحد LIBER\n💰 هزینه: {cost:.4f} Coin\n📈 {price:.4f} → {new_price:.4f}"
-
-def execute_sell_units(user_id, units):
-    user = get_user(user_id)
-    if not user:
-        return False, "ابتدا با /start ثبت‌نام کن."
-    if not 1 <= units <= MAX_UNITS_PER_TRADE:
-        return False, f"تعداد واحد باید بین ۱ تا {MAX_UNITS_PER_TRADE} باشه."
-    if user["liber"] < units:
-        return False, f"❌ LIBER کافی نیست. موجودی: {user['liber']:.2f}"
-    price = get_market_price()
-    gain, new_price = _simulate_trade(units, price, False)
-    with closing(get_conn()) as conn, conn:
-        conn.execute("UPDATE users SET liber = liber - ?, coin = coin + ? WHERE user_id = ?", (units, gain, user_id))
-        conn.execute("INSERT INTO market (price, updated_at) VALUES (?, ?)", (new_price, datetime.utcnow().isoformat()))
-    log_action(user_id, "MARKET_SELL", f"units={units} gain={gain} new_price={new_price}")
-    record_trade_volume(units, is_buy=False)
-    return True, f"🔴 فروش موفق!\n📦 {units} واحد LIBER\n💰 دریافتی: {gain:.4f} Coin\n📉 {price:.4f} → {new_price:.4f}"
-
-async def market_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = query.from_user.id
-    data = query.data
-    await query.answer()
-
-    if data == "mkt_noop":
-        return
-
-    if data == "mkt_back":
-        price = get_market_price()
-        await query.edit_message_text(
-            f"💹 بازار LIBER\n\nقیمت لحظه‌ای: {price:.4f} Coin\n\nبا دکمه‌ها خرید/فروش کن:",
-            reply_markup=market_action_keyboard(),
-        )
-        return
-
-    if data in ("mkt_buy_menu", "mkt_sell_menu"):
-        action = "buy" if data == "mkt_buy_menu" else "sell"
-        _pending_qty[user_id] = 1
-        label = "خرید" if action == "buy" else "فروش"
-        await query.edit_message_text(
-            f"🔢 تعداد واحد برای {label} رو با دکمه‌های +/- تنظیم کن (۱ تا ۹۹)، بعد تایید بزن:",
-            reply_markup=stepper_keyboard(action, 1),
-        )
-        return
-
-    if "_step_" in data:
-        parts = data.split("_")
-        action, delta = parts[1], int(parts[3])
-        qty = max(1, min(MAX_UNITS_PER_TRADE, _pending_qty.get(user_id, 1) + delta))
-        _pending_qty[user_id] = qty
-        await query.edit_message_reply_markup(reply_markup=stepper_keyboard(action, qty))
-        return
-
-    if data.endswith("_confirm"):
-        action = "buy" if data.startswith("mkt_buy") else "sell"
-        units = _pending_qty.get(user_id, 1)
-        success, msg = execute_buy_units(user_id, units) if action == "buy" else execute_sell_units(user_id, units)
-        await query.edit_message_text(msg, reply_markup=market_action_keyboard())
-
-async def buy_liber(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Command-line fallback for buying (button flow is the main path now)."""
-    user_id = update.effective_user.id
-    if not context.args:
-        await update.message.reply_text(
-            "می‌تونی از دکمه‌های بازار (💹 بازار LIBER) استفاده کنی، یا دستی بنویسی:\n"
-            "/buy تعداد_واحد (۱ تا ۹۹)"
-        )
-        return
-    try:
-        units = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("لطفاً یک عدد صحیح وارد کن.")
-        return
-    success, msg = execute_buy_units(user_id, units)
-    await update.message.reply_text(msg)
-
-async def sell_liber(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Command-line fallback for selling (button flow is the main path now)."""
-    user_id = update.effective_user.id
-    if not context.args:
-        await update.message.reply_text(
-            "می‌تونی از دکمه‌های بازار (💹 بازار LIBER) استفاده کنی، یا دستی بنویسی:\n"
-            "/sell تعداد_واحد (۱ تا ۹۹)"
-        )
-        return
-    try:
-        units = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("لطفاً یک عدد صحیح وارد کن.")
-        return
-    success, msg = execute_sell_units(user_id, units)
-    await update.message.reply_text(msg)
-    await update.message.reply_text(
-        f"✅ فروش موفق: {coin_amount:.4f} Coin دریافت شد (قیمت: {price:.4f})"
-    )
-
-async def daily_reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    now = datetime.utcnow()
-    if user["last_daily"]:
-        last = datetime.fromisoformat(user["last_daily"])
-        if now - last < timedelta(hours=24):
-            remaining = timedelta(hours=24) - (now - last)
-            hrs = int(remaining.total_seconds() // 3600)
-            mins = int((remaining.total_seconds() % 3600) // 60)
-            await update.message.reply_text(
-                f"⏳ جایزه روزانه رو قبلاً گرفتی. {hrs} ساعت و {mins} دقیقه دیگه دوباره تلاش کن."
-            )
-            return
-        # streak continues if claimed within 24-48h, resets if longer gap
-        streak_continues = now - last < timedelta(hours=48)
+    q = update.callback_query
+    if await is_member_of_all_channels(context.bot, q.from_user.id):
+        await q.answer()
+        await send_main_menu(update, context, greet=True)
     else:
-        streak_continues = False
+        await q.answer("هنوز در همه‌ی کانال‌ها عضو نشده‌اید ❌", show_alert=True)
 
-    new_streak = (user["login_streak"] + 1) if streak_continues else 1
-    streak_bonus_multiplier = min(3.0, 1 + (new_streak - 1) * 0.15)  # up to +200% at day 14+
 
-    reward_liber = int(random.randint(20, 100) * streak_bonus_multiplier)
-    reward_energy = random.randint(5, 20)
-
-    add_currency(user_id, liber=reward_liber, energy=reward_energy)
-    add_xp(user_id, 10)
-    update_user_field(user_id, "last_daily", now.isoformat())
-    update_user_field(user_id, "login_streak", new_streak)
-
-    streak_text = f"\n🔥 استریک ورود: {new_streak} روز (ضریب پاداش: x{streak_bonus_multiplier:.2f})"
-    await update.message.reply_text(
-        f"🎁 جایزه روزانه دریافت شد!\n+{reward_liber} LIBER\n+{reward_energy} Energy\n+10 XP{streak_text}"
-    )
-    log_action(user_id, "DAILY_REWARD", f"liber={reward_liber} energy={reward_energy} streak={new_streak}")
-
-async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    with closing(get_conn()) as conn:
-        rows = conn.execute(
-            "SELECT first_name, level, xp, liber FROM users ORDER BY level DESC, xp DESC LIMIT 10"
-        ).fetchall()
-
-    if not rows:
-        await update.message.reply_text("هنوز کسی در جدول رتبه‌بندی نیست.")
+# ---------------------------------------------------------------
+#  پروفایل
+# ---------------------------------------------------------------
+async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    u = get_user(q.from_user.id)
+    if not u:
+        await q.edit_message_text("ابتدا /start را بزنید.")
         return
 
-    text = "🏆 برترین بازیکنان\n\n"
-    for i, row in enumerate(rows, start=1):
-        text += f"{i}. {row['first_name']} — سطح {row['level']} ({row['xp']} XP)\n"
+    sub_text = "ندارد"
+    if u["subscription_tier"] and u["subscription_expires"] and u["subscription_expires"] > time.time():
+        days_left = (u["subscription_expires"] - int(time.time())) // 86400
+        tier_title = SUBSCRIPTION_TIERS.get(u["subscription_tier"], {}).get("title", u["subscription_tier"])
+        sub_text = f"{tier_title} ({days_left} روز باقی‌مانده)"
 
-    await update.message.reply_text(text)
+    text = (
+        f"👤 پروفایل شما\n\n"
+        f"🪙 سکه: {u['coin']}\n"
+        f"💎 الماس: {u['diamond']}\n"
+        f"🔷 LIBER: {round(u['liber'], 2)}\n"
+        f"⭐ سطح: {u['level']} ({u['xp']} XP)\n"
+        f"🏦 موجودی بانک: {round(u['bank_balance'], 2)}\n"
+        f"🎫 اشتراک: {sub_text}\n"
+    )
+    await q.edit_message_text(text, reply_markup=back_keyboard())
 
-async def invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+# ---------------------------------------------------------------
+#  بازار
+# ---------------------------------------------------------------
+async def market_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    price = get_market_price()
+    text = (
+        f"💹 بازار LIBER\n\n"
+        f"قیمت فعلی هر ۱ LIBER: {price} سکه\n"
+        f"کارمزد خرید: {BUY_FEE_PERCENT}٪  |  کارمزد فروش: {SELL_FEE_PERCENT}٪\n"
+        f"قیمت هر یک ساعت بروزرسانی می‌شود."
+    )
+    await q.edit_message_text(text, reply_markup=market_keyboard())
+
+
+async def market_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    context.user_data["awaiting"] = "market_buy_amount"
+    await q.edit_message_text(
+        "چند LIBER می‌خواهید بخرید؟ عدد را ارسال کنید.",
+        reply_markup=back_keyboard("menu_market"),
+    )
+
+
+async def market_sell_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    context.user_data["awaiting"] = "market_sell_amount"
+    await q.edit_message_text(
+        "چند LIBER می‌خواهید بفروشید؟ عدد را ارسال کنید.",
+        reply_markup=back_keyboard("menu_market"),
+    )
+
+
+async def _do_market_buy(update, context, amount):
     user_id = update.effective_user.id
+    price = get_market_price()
+    cost = round(amount * price * (1 + BUY_FEE_PERCENT / 100), 2)
+    u = get_user(user_id)
+    if u["coin"] < cost:
+        await update.message.reply_text(f"❌ سکه کافی ندارید. نیاز: {cost}، موجودی: {u['coin']}")
+        return
+    update_balance(user_id, coin=-cost, liber=amount)
+    log_transaction(user_id, "market_buy", f"{amount} LIBER @ {price}")
+    await update.message.reply_text(
+        f"✅ خرید موفق: {amount} LIBER با {cost} سکه.",
+        reply_markup=back_keyboard(),
+    )
+
+
+async def _do_market_sell(update, context, amount):
+    user_id = update.effective_user.id
+    u = get_user(user_id)
+    if u["liber"] < amount:
+        await update.message.reply_text(f"❌ LIBER کافی ندارید. موجودی: {round(u['liber'],2)}")
+        return
+    price = get_market_price()
+    gain = round(amount * price * (1 - SELL_FEE_PERCENT / 100), 2)
+    update_balance(user_id, coin=gain, liber=-amount)
+    log_transaction(user_id, "market_sell", f"{amount} LIBER @ {price}")
+    await update.message.reply_text(
+        f"✅ فروش موفق: {amount} LIBER به ازای {gain} سکه.",
+        reply_markup=back_keyboard(),
+    )
+
+
+# ---------------------------------------------------------------
+#  بانک
+# ---------------------------------------------------------------
+async def bank_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    interest = apply_daily_interest(q.from_user.id)
+    u = get_user(q.from_user.id)
+    note = f"\n\n💰 سود روزانه‌ی {interest} به حسابتان اضافه شد." if interest else ""
+    text = (
+        f"🏦 بانک LIBER\n\n"
+        f"موجودی سپرده: {round(u['bank_balance'], 2)} سکه\n"
+        f"سود روزانه: {BANK_INTEREST_PERCENT}٪{note}"
+    )
+    await q.edit_message_text(text, reply_markup=bank_keyboard())
+
+
+async def bank_deposit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    context.user_data["awaiting"] = "bank_deposit_amount"
+    await q.edit_message_text("چند سکه می‌خواهید واریز کنید؟", reply_markup=back_keyboard("menu_bank"))
+
+
+async def bank_withdraw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    total = bank_withdraw_all(q.from_user.id)
+    if total <= 0:
+        await q.edit_message_text("سپرده‌ای برای برداشت وجود ندارد.", reply_markup=back_keyboard("menu_bank"))
+        return
+    await q.edit_message_text(f"✅ {round(total,2)} سکه برداشت شد.", reply_markup=back_keyboard("menu_bank"))
+
+
+async def _do_bank_deposit(update, context, amount):
+    user_id = update.effective_user.id
+    u = get_user(user_id)
+    if u["coin"] < amount:
+        await update.message.reply_text("❌ سکه کافی ندارید.")
+        return
+    bank_deposit(user_id, amount)
+    await update.message.reply_text(f"✅ {amount} سکه واریز شد.", reply_markup=back_keyboard())
+
+
+# ---------------------------------------------------------------
+#  صندوق‌ها
+# ---------------------------------------------------------------
+async def chests_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    await q.edit_message_text("🏪 صندوق موردنظر را انتخاب کنید:", reply_markup=chests_keyboard())
+
+
+async def chest_open_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    chest_key = q.data.split(":", 1)[1]
+    chest = CHEST_TABLE.get(chest_key)
+    if not chest:
+        await q.answer()
+        await q.edit_message_text("صندوق نامعتبر است.", reply_markup=back_keyboard())
+        return
+
+    user_id = q.from_user.id
+
+    if chest_key == "free" and not has_done_daily_mission(user_id):
+        await q.answer(
+            "🔒 اول باید «🎯 ماموریت روزانه» رو از منو انجام بدید تا صندوق رایگان باز شه.",
+            show_alert=True,
+        )
+        return
+
+    u = get_user(user_id)
+    for currency, amount in chest["cost"].items():
+        if u[currency] < amount:
+            await q.answer(f"❌ {currency} کافی ندارید.", show_alert=True)
+            return
+
+    deltas = {"coin": 0, "liber": 0, "diamond": 0, "xp": 0}
+    for currency, amount in chest["cost"].items():
+        deltas[currency] -= amount
+
+    await q.answer()
+    reward_lines = []
+    for reward_type, low, high in chest["rewards"]:
+        amount = random.randint(low, high)
+        deltas[reward_type] = deltas.get(reward_type, 0) + amount
+        reward_lines.append(f"+{amount} {reward_type}")
+
+    update_balance(user_id, coin=deltas.get("coin", 0), liber=deltas.get("liber", 0),
+                       diamond=deltas.get("diamond", 0), xp=deltas.get("xp", 0))
+    log_transaction(user_id, "chest_open", chest_key)
+
+    await q.edit_message_text(
+        f"🎉 صندوق {chest_key} باز شد!\n\n" + "\n".join(reward_lines),
+        reply_markup=back_keyboard("menu_chests"),
+    )
+
+
+# ---------------------------------------------------------------
+#  ماموریت روزانه
+# ---------------------------------------------------------------
+async def daily_mission_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    user_id = q.from_user.id
+    u = get_user(user_id)
+    now = int(time.time())
+    today_start = int(now // 86400) * 86400
+
+    if u["last_daily"] >= today_start:
+        tomorrow_start = today_start + 86400
+        hours = (tomorrow_start - now) // 3600
+        await q.answer(f"⏳ ماموریت امروز رو قبلاً انجام دادی. تا {hours} ساعت دیگر ماموریت جدید فعال می‌شود.", show_alert=True)
+        return
+
+    await q.answer()
+    update_balance(user_id, liber=DAILY_MISSION_LIBER, xp=DAILY_MISSION_XP)
+    with get_conn() as conn:
+        conn.execute("UPDATE users SET last_daily = ? WHERE user_id = ?", (now, user_id))
+    await q.edit_message_text(
+        f"✅ ماموریت روزانه انجام شد!\n+{DAILY_MISSION_LIBER} LIBER, +{DAILY_MISSION_XP} XP\n\n"
+        "🔓 حالا صندوق رایگان و رقابت آنلاین امروز برات باز شدن!",
+        reply_markup=back_keyboard(),
+    )
+
+
+# ---------------------------------------------------------------
+#  رفرال
+# ---------------------------------------------------------------
+async def referral_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
     bot_username = (await context.bot.get_me()).username
-    link = f"https://t.me/{bot_username}?start={user_id}"
-
-    with closing(get_conn()) as conn:
-        count = conn.execute(
-            "SELECT COUNT(*) as c FROM users WHERE referred_by = ?", (user_id,)
-        ).fetchone()["c"]
-
+    link = f"https://t.me/{bot_username}?start={q.from_user.id}"
+    count = count_referrals(q.from_user.id)
     text = (
         f"👥 دعوت دوستان\n\n"
         f"لینک اختصاصی شما:\n{link}\n\n"
-        f"تعداد دعوت‌شدگان: {count}\n"
-        f"🎁 جایزه هر دعوت مستقیم: 50 LIBER (مجازی)\n"
-        f"💎 جایزه سطح دو: وقتی افرادی که دعوت کردی، خودشون یکی رو دعوت کنن، "
-        f"تو هم ۱۵ LIBER اضافه می‌گیری!"
+        f"🎁 پاداش هر دعوت‌شده‌ی عادی: {REFERRAL_BONUS_NORMAL} LIBER\n"
+        f"🎁 پاداش هر دعوت‌شده‌ی پرمیوم تلگرام: {REFERRAL_BONUS_PREMIUM} LIBER\n\n"
+        f"تعداد دعوت‌های موفق شما: {count}"
     )
-    await update.message.reply_text(text)
+    await q.edit_message_text(text, reply_markup=back_keyboard())
 
-# ---------------------------------------------------------------------------
-# Admin Handlers
-# ---------------------------------------------------------------------------
 
-def is_admin(user_id: int) -> bool:
-    return user_id in ADMIN_IDS
+# ---------------------------------------------------------------
+#  اشتراک ویژه (Telegram Stars)
+# ---------------------------------------------------------------
+async def subscription_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    await q.edit_message_text("⭐ یکی از تعرفه‌های اشتراک را انتخاب کنید:", reply_markup=subscription_menu_keyboard())
 
-async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_admin(user_id):
-        await update.message.reply_text("⛔ دسترسی غیرمجاز.")
+
+async def subscription_tier_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    tier_key = q.data.split(":", 1)[1]
+    tier = SUBSCRIPTION_TIERS[tier_key]
+    perks = "\n".join(f"• {p}" for p in tier["perks"])
+    text = f"{tier['title']}\n\n{perks}\n\nمدت را انتخاب کنید:"
+    await q.edit_message_text(text, reply_markup=subscription_duration_keyboard(tier_key))
+
+
+async def subscription_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    _, tier_key, months = q.data.split(":")
+    months = int(months)
+    tier = SUBSCRIPTION_TIERS[tier_key]
+    stars = tier["options"][months]
+
+    context.user_data["pending_sub"] = {"tier": tier_key, "months": months}
+
+    await context.bot.send_invoice(
+        chat_id=q.from_user.id,
+        title=f"{tier['title']} - {months} ماهه",
+        description=f"خرید {tier['title']} به مدت {months} ماه",
+        payload=f"sub:{tier_key}:{months}:{q.from_user.id}",
+        provider_token="",  # برای پرداخت با استارز (XTR) این فیلد خالی می‌ماند
+        currency="XTR",
+        prices=[LabeledPrice(label=tier["title"], amount=stars)],
+    )
+
+
+async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.pre_checkout_query
+    await query.answer(ok=True)
+
+
+async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    payment = update.message.successful_payment
+    payload_parts = payment.invoice_payload.split(":")
+    if len(payload_parts) != 4 or payload_parts[0] != "sub":
+        await update.message.reply_text("خطا در پردازش پرداخت. با ادمین تماس بگیرید.")
         return
+
+    _, tier_key, months, user_id_str = payload_parts
+    user_id = int(user_id_str)
+    months = int(months)
+    stars = payment.total_amount
+
+    new_expiry = grant_subscription(
+        user_id, tier_key, months, stars, payment.telegram_payment_charge_id
+    )
+    tier = SUBSCRIPTION_TIERS[tier_key]
 
     await update.message.reply_text(
-        "👑 پنل مدیریت LIBER", reply_markup=admin_panel_keyboard()
+        f"✅ تراکنش موفق! {tier['title']} برای {months} ماه فعال شد.\n"
+        f"سفارش شما با موفقیت انجام و پرمیوم برایتان فعال شد. ممنون از خریدتان 🙏",
+        reply_markup=back_keyboard(),
     )
-
-async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = query.from_user.id
-
-    if not is_admin(user_id):
-        await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
-        return
-
-    await query.answer()
-    action = query.data
-
-    if action == "admin_dashboard":
-        with closing(get_conn()) as conn:
-            total_users = conn.execute("SELECT COUNT(*) as c FROM users").fetchone()["c"]
-            total_liber = conn.execute("SELECT SUM(liber) as s FROM users").fetchone()["s"] or 0
-            price = get_market_price()
-
-        text = (
-            f"📊 داشبورد\n\n"
-            f"کل کاربران: {total_users}\n"
-            f"مجموع LIBER در گردش: {total_liber:.2f}\n"
-            f"قیمت بازار فعلی: {price:.4f}\n"
-        )
-        await query.edit_message_text(text, reply_markup=admin_panel_keyboard())
-
-    elif action == "admin_users":
-        with closing(get_conn()) as conn:
-            rows = conn.execute(
-                "SELECT user_id, first_name, level, liber, banned FROM users ORDER BY joined_at DESC LIMIT 15"
-            ).fetchall()
-
-        text = "👥 آخرین کاربران\n\n"
-        for r in rows:
-            status = "🚫" if r["banned"] else "✅"
-            text += f"{status} {r['first_name']} (ID: {r['user_id']}) — سطح {r['level']}\n"
-
-        await query.edit_message_text(text, reply_markup=admin_panel_keyboard())
-
-    elif action == "admin_economy":
-        history_text = "💹 تاریخچه قیمت (۱۰ مورد آخر)\n\n"
-        with closing(get_conn()) as conn:
-            rows = conn.execute(
-                "SELECT price, recorded_at FROM market_history ORDER BY id DESC LIMIT 10"
-            ).fetchall()
-        for r in rows:
-            history_text += f"{r['price']:.4f} — {r['recorded_at'][:16]}\n"
-
-        await query.edit_message_text(history_text or "داده‌ای موجود نیست.", reply_markup=admin_panel_keyboard())
-
-    elif action == "admin_ban":
-        await query.edit_message_text(
-            "برای بن کردن یک کاربر از دستور زیر استفاده کن:\n/ban USER_ID",
-            reply_markup=admin_panel_keyboard(),
-        )
-
-    elif action == "admin_broadcast":
-        await query.edit_message_text(
-            "برای ارسال پیام همگانی از دستور زیر استفاده کن:\n/broadcast متن پیام",
-            reply_markup=admin_panel_keyboard(),
-        )
-
-    elif action == "admin_logs":
-        with closing(get_conn()) as conn:
-            rows = conn.execute(
-                "SELECT user_id, action, detail, created_at FROM logs ORDER BY log_id DESC LIMIT 10"
-            ).fetchall()
-
-        text = "📋 آخرین لاگ‌ها\n\n"
-        for r in rows:
-            text += f"[{r['created_at'][:16]}] {r['user_id']} — {r['action']} {r['detail']}\n"
-
-        await query.edit_message_text(text or "لاگی موجود نیست.", reply_markup=admin_panel_keyboard())
-
-async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_admin(user_id):
-        return
-
-    if not context.args:
-        await update.message.reply_text("استفاده: /ban USER_ID")
-        return
-
-    try:
-        target_id = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("شناسه نامعتبر است.")
-        return
-
-    update_user_field(target_id, "banned", 1)
-    log_action(user_id, "ADMIN_BAN", f"target={target_id}")
-    await update.message.reply_text(f"🚫 کاربر {target_id} بن شد.")
-
-async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_admin(user_id):
-        return
-
-    if not context.args:
-        await update.message.reply_text("استفاده: /unban USER_ID")
-        return
-
-    try:
-        target_id = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("شناسه نامعتبر است.")
-        return
-
-    update_user_field(target_id, "banned", 0)
-    log_action(user_id, "ADMIN_UNBAN", f"target={target_id}")
-    await update.message.reply_text(f"✅ کاربر {target_id} آن‌بن شد.")
-
-async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_admin(user_id):
-        return
-
-    if not context.args:
-        await update.message.reply_text("استفاده: /broadcast متن پیام")
-        return
-
-    message_text = " ".join(context.args)
-
-    with closing(get_conn()) as conn:
-        rows = conn.execute("SELECT user_id FROM users WHERE banned = 0").fetchall()
-
-    sent = 0
-    failed = 0
-    for row in rows:
-        try:
-            await context.bot.send_message(row["user_id"], f"📢 {message_text}")
-            sent += 1
-        except Exception:
-            failed += 1
-
-    await update.message.reply_text(f"✅ ارسال شد به {sent} کاربر. ({failed} ناموفق)")
-    log_action(user_id, "ADMIN_BROADCAST", message_text)
-
-# ---------------------------------------------------------------------------
-# Country & Buildings
-# ---------------------------------------------------------------------------
-
-BUILDING_COSTS = {
-    "mine": 200,
-    "factory": 300,
-    "power_plant": 400,
-    "farm": 150,
-    "lab": 500,
-}
-
-BUILDING_NAMES = {
-    "mine": "⛏ معدن",
-    "factory": "🏭 کارخانه",
-    "power_plant": "⚡ نیروگاه",
-    "farm": "🌾 مزرعه",
-    "lab": "🔬 آزمایشگاه",
-}
-
-def get_country_by_owner(owner_id: int):
-    with closing(get_conn()) as conn:
-        return conn.execute(
-            "SELECT * FROM countries WHERE owner_id = ?", (owner_id,)
-        ).fetchone()
-
-async def found_country(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    existing = get_country_by_owner(user_id)
-    if existing:
-        await update.message.reply_text("شما قبلاً یک کشور ساخته‌اید.")
-        return
-
-    if not context.args:
-        await update.message.reply_text("استفاده: /found نام_کشور")
-        return
-
-    name = " ".join(context.args)[:30]
-
-    with closing(get_conn()) as conn, conn:
-        cursor = conn.execute(
-            """INSERT INTO countries (owner_id, name, created_at)
-               VALUES (?, ?, ?)""",
-            (user_id, name, datetime.utcnow().isoformat()),
-        )
-        country_id = cursor.lastrowid
-        conn.execute(
-            "UPDATE users SET country_id = ? WHERE user_id = ?",
-            (country_id, user_id),
-        )
-
-    log_action(user_id, "FOUND_COUNTRY", name)
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            """INSERT OR IGNORE INTO achievements (user_id, name, rarity, achieved_at)
-               VALUES (?, 'بنیان‌گذار کشور', 'کمیاب', ?)""",
-            (user_id, datetime.utcnow().isoformat()),
-        )
-    await update.message.reply_text(f"🌍 کشور «{name}» با موفقیت تاسیس شد!")
-
-async def country_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    country = get_country_by_owner(user_id)
-    if not country:
-        await update.message.reply_text(
-            "شما هنوز کشوری ندارید. با /found نام_کشور یکی بساز."
-        )
-        return
-
-    with closing(get_conn()) as conn:
-        buildings = conn.execute(
-            "SELECT type, level FROM buildings WHERE country_id = ?",
-            (country["country_id"],),
-        ).fetchall()
-
-    buildings_text = "\n".join(
-        f"  {BUILDING_NAMES.get(b['type'], b['type'])}: سطح {b['level']}"
-        for b in buildings
-    ) or "  هنوز ساختمانی ساخته نشده."
-
-    text = (
-        f"🌍 {country['name']} {country['flag']}\n\n"
-        f"👥 جمعیت: {country['population']}\n"
-        f"😊 رضایت: {country['satisfaction']}%\n"
-        f"💰 بودجه: {country['budget']:.2f}\n"
-        f"🛰 سطح فناوری: {country['tech_level']}\n"
-        f"🛡 سطح دفاع: {country['defense_level']}\n\n"
-        f"🏗 ساختمان‌ها:\n{buildings_text}"
-    )
-    await update.message.reply_text(text)
-
-async def build(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    country = get_country_by_owner(user_id)
-
-    if not country:
-        await update.message.reply_text("ابتدا یک کشور بساز: /found نام_کشور")
-        return
-
-    if not context.args or context.args[0] not in BUILDING_COSTS:
-        options = ", ".join(BUILDING_COSTS.keys())
-        await update.message.reply_text(f"استفاده: /build نوع\nانواع: {options}")
-        return
-
-    b_type = context.args[0]
-    cost = BUILDING_COSTS[b_type]
-
-    if user["liber"] < cost:
-        await update.message.reply_text(f"LIBER کافی نیست. هزینه: {cost}")
-        return
-
-    with closing(get_conn()) as conn, conn:
-        existing = conn.execute(
-            "SELECT * FROM buildings WHERE country_id = ? AND type = ?",
-            (country["country_id"], b_type),
-        ).fetchone()
-
-        if existing:
-            conn.execute(
-                "UPDATE buildings SET level = level + 1 WHERE building_id = ?",
-                (existing["building_id"],),
-            )
-        else:
-            conn.execute(
-                "INSERT INTO buildings (country_id, type, level) VALUES (?, ?, 1)",
-                (country["country_id"],),
-            )
-
-        conn.execute(
-            "UPDATE users SET liber = liber - ? WHERE user_id = ?", (cost, user_id)
-        )
-
-    add_xp(user_id, 15)
-    log_action(user_id, "BUILD", f"{b_type} cost={cost}")
-    await update.message.reply_text(
-        f"🏗 {BUILDING_NAMES.get(b_type, b_type)} ساخته/ارتقا یافت! (-{cost} LIBER)"
-    )
-
-# ---------------------------------------------------------------------------
-# Bank: deposits with interest (virtual only)
-# ---------------------------------------------------------------------------
-
-DEPOSIT_RATE = 0.02       # 2% return
-DEPOSIT_DURATION_HOURS = 24
-
-async def bank_deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    if not context.args:
-        await update.message.reply_text("استفاده: /deposit مقدار_لیبر")
-        return
-
-    try:
-        amount = float(context.args[0])
-    except ValueError:
-        await update.message.reply_text("عدد معتبر وارد کن.")
-        return
-
-    if amount <= 0 or amount > user["liber"]:
-        await update.message.reply_text("موجودی LIBER کافی نیست.")
-        return
-
-    now = datetime.utcnow()
-    matures_at = now + timedelta(hours=DEPOSIT_DURATION_HOURS)
-
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            "UPDATE users SET liber = liber - ? WHERE user_id = ?", (amount, user_id)
-        )
-        conn.execute(
-            """INSERT INTO bank_deposits (user_id, amount, created_at, matures_at, rate)
-               VALUES (?, ?, ?, ?, ?)""",
-            (user_id, amount, now.isoformat(), matures_at.isoformat(), DEPOSIT_RATE),
-        )
-
-    log_action(user_id, "BANK_DEPOSIT", f"amount={amount}")
-    await update.message.reply_text(
-        f"🏦 {amount:.2f} LIBER سپرده‌گذاری شد.\n"
-        f"سود: {DEPOSIT_RATE*100:.0f}% بعد از {DEPOSIT_DURATION_HOURS} ساعت.\n"
-        f"با /claim می‌تونی بعد از سررسید برداشت کنی."
-    )
-
-async def bank_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    now = datetime.utcnow()
-
-    with closing(get_conn()) as conn, conn:
-        deposits = conn.execute(
-            """SELECT * FROM bank_deposits
-               WHERE user_id = ? AND claimed = 0""",
-            (user_id,),
-        ).fetchall()
-
-        total_claimed = 0
-        claimed_count = 0
-
-        for d in deposits:
-            matures_at = datetime.fromisoformat(d["matures_at"])
-            if now >= matures_at:
-                payout = d["amount"] * (1 + d["rate"])
-                conn.execute(
-                    "UPDATE users SET liber = liber + ? WHERE user_id = ?",
-                    (payout, user_id),
-                )
-                conn.execute(
-                    "UPDATE bank_deposits SET claimed = 1 WHERE deposit_id = ?",
-                    (d["deposit_id"],),
-                )
-                total_claimed += payout
-                claimed_count += 1
-
-    if claimed_count == 0:
-        await update.message.reply_text("هیچ سپرده‌ی سررسیدشده‌ای موجود نیست.")
-    else:
-        await update.message.reply_text(
-            f"✅ {claimed_count} سپرده برداشت شد. مجموع دریافتی: {total_claimed:.2f} LIBER"
-        )
-    log_action(user_id, "BANK_CLAIM", f"count={claimed_count}")
-
-# ---------------------------------------------------------------------------
-# Investments (virtual projects with randomized return)
-# ---------------------------------------------------------------------------
-
-INVESTMENT_PROJECTS = {
-    "tech": {"name": "🛰 پروژه فناوری", "min_return": 1.05, "max_return": 1.35},
-    "energy": {"name": "⚡ شبکه انرژی", "min_return": 1.0, "max_return": 1.25},
-    "mining": {"name": "⛏ معدن جدید", "min_return": 0.9, "max_return": 1.5},
-}
-
-async def invest(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    if len(context.args) < 2 or context.args[0] not in INVESTMENT_PROJECTS:
-        options = ", ".join(INVESTMENT_PROJECTS.keys())
-        await update.message.reply_text(f"استفاده: /invest نوع مقدار\nانواع: {options}")
-        return
-
-    project_key = context.args[0]
-    try:
-        amount = float(context.args[1])
-    except ValueError:
-        await update.message.reply_text("عدد معتبر وارد کن.")
-        return
-
-    if amount <= 0 or amount > user["liber"]:
-        await update.message.reply_text("موجودی LIBER کافی نیست.")
-        return
-
-    project = INVESTMENT_PROJECTS[project_key]
-    multiplier = random.uniform(project["min_return"], project["max_return"])
-    expected_return = round(amount * multiplier, 2)
-
-    now = datetime.utcnow()
-    matures_at = now + timedelta(hours=12)
-
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            "UPDATE users SET liber = liber - ? WHERE user_id = ?", (amount, user_id)
-        )
-        conn.execute(
-            """INSERT INTO investments
-               (user_id, project, amount, expected_return, created_at, matures_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (user_id, project_key, amount, expected_return, now.isoformat(), matures_at.isoformat()),
-        )
-
-    log_action(user_id, "INVEST", f"{project_key} amount={amount}")
-    await update.message.reply_text(
-        f"📈 سرمایه‌گذاری در {project['name']} انجام شد.\n"
-        f"مبلغ: {amount:.2f} LIBER\n"
-        f"نتیجه بعد از ۱۲ ساعت مشخص می‌شود. با /claim_invest بررسی کن."
-    )
-
-async def claim_investments(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    now = datetime.utcnow()
-
-    with closing(get_conn()) as conn, conn:
-        investments = conn.execute(
-            "SELECT * FROM investments WHERE user_id = ? AND claimed = 0",
-            (user_id,),
-        ).fetchall()
-
-        total = 0
-        count = 0
-
-        for inv in investments:
-            matures_at = datetime.fromisoformat(inv["matures_at"])
-            if now >= matures_at:
-                conn.execute(
-                    "UPDATE users SET liber = liber + ? WHERE user_id = ?",
-                    (inv["expected_return"], user_id),
-                )
-                conn.execute(
-                    "UPDATE investments SET claimed = 1 WHERE investment_id = ?",
-                    (inv["investment_id"],),
-                )
-                total += inv["expected_return"]
-                count += 1
-
-    if count == 0:
-        await update.message.reply_text("سرمایه‌گذاری سررسیدشده‌ای موجود نیست.")
-    else:
-        await update.message.reply_text(
-            f"✅ {count} سرمایه‌گذاری تسویه شد. مجموع دریافتی: {total:.2f} LIBER"
-        )
-    log_action(user_id, "CLAIM_INVEST", f"count={count}")
-
-# ---------------------------------------------------------------------------
-# Missions
-# ---------------------------------------------------------------------------
-
-MISSION_TEMPLATES = {
-    "daily": [
-        ("خرید در بازار", 30, 10),
-        ("ساخت یک ساختمان", 50, 20),
-        ("جمع‌آوری جایزه روزانه", 20, 5),
-    ],
-    "weekly": [
-        ("رسیدن به سطح بعدی", 150, 50),
-        ("سرمایه‌گذاری موفق", 200, 60),
-    ],
-}
-
-def missions_keyboard(missions_rows, user_id=None):
-    rows = []
-    for m in missions_rows:
-        mark = "✅" if m["completed"] else "⬜"
-        label = f"{mark} {m['description']} (+{m['reward_liber']:.0f} LIBER)"
-        cb = "mis_noop" if m["completed"] else f"mis_done_{m['mission_id']}"
-        rows.append([InlineKeyboardButton(label, callback_data=cb)])
-
-    all_done = bool(missions_rows) and all(m["completed"] for m in missions_rows)
-    if all_done and user_id is not None:
-        today = datetime.utcnow().date().isoformat()
-        with closing(get_conn()) as conn:
-            coupon = conn.execute(
-                "SELECT * FROM daily_coupons WHERE user_id = ? AND coupon_date = ?", (user_id, today)
-            ).fetchone()
-        if not coupon or not coupon["claimed"]:
-            rows.append([InlineKeyboardButton("🎟 دریافت کوپن روزانه (همه انجام شد!)", callback_data="mis_coupon")])
-        else:
-            rows.append([InlineKeyboardButton("✅ کوپن امروز دریافت شد", callback_data="mis_noop")])
-
-    rows.append([InlineKeyboardButton("🔄 بروزرسانی", callback_data="mis_refresh")])
-    return InlineKeyboardMarkup(rows)
-
-
-def _get_or_create_missions(user_id: int):
-    with closing(get_conn()) as conn:
-        existing = conn.execute(
-            "SELECT * FROM missions WHERE user_id = ? AND mission_type = 'daily' "
-            "AND date(created_at) = date('now')", (user_id,),
-        ).fetchall()
-
-    if not existing:
-        with closing(get_conn()) as conn, conn:
-            for desc, reward_liber, reward_xp in MISSION_TEMPLATES["daily"]:
-                conn.execute(
-                    """INSERT INTO missions
-                       (user_id, mission_type, description, reward_liber, reward_xp, created_at)
-                       VALUES (?, 'daily', ?, ?, ?, ?)""",
-                    (user_id, desc, reward_liber, reward_xp, datetime.utcnow().isoformat()),
-                )
-        with closing(get_conn()) as conn:
-            existing = conn.execute(
-                "SELECT * FROM missions WHERE user_id = ? AND mission_type = 'daily' "
-                "AND date(created_at) = date('now')", (user_id,),
-            ).fetchall()
-    return existing
-
-
-async def get_missions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    missions = _get_or_create_missions(user_id)
-    done = sum(1 for m in missions if m["completed"])
-    await update.message.reply_text(
-        f"🎯 مأموریت‌های امروز ({done}/{len(missions)} انجام‌شده)\n\nروی هرکدوم بزن تا تیک بخوره و جایزه بگیری:",
-        reply_markup=missions_keyboard(missions, user_id),
-    )
-
-
-async def missions_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = query.from_user.id
-    data = query.data
-    await query.answer()
-
-    if data == "mis_noop":
-        return
-
-    if data == "mis_coupon":
-        today = datetime.utcnow().date().isoformat()
-        with closing(get_conn()) as conn:
-            coupon = conn.execute(
-                "SELECT * FROM daily_coupons WHERE user_id = ? AND coupon_date = ?", (user_id, today)
-            ).fetchone()
-        if coupon and coupon["claimed"]:
-            await query.answer("قبلاً امروز گرفتی.", show_alert=True)
-            return
-
-        coupon_reward = random.randint(50, 150)
-        with closing(get_conn()) as conn, conn:
-            conn.execute(
-                """INSERT INTO daily_coupons (user_id, coupon_date, claimed) VALUES (?, ?, 1)
-                   ON CONFLICT(user_id, coupon_date) DO UPDATE SET claimed = 1""",
-                (user_id, today),
-            )
-        add_currency(user_id, liber=coupon_reward)
-        log_action(user_id, "DAILY_COUPON", f"reward={coupon_reward}")
-
-        missions = _get_or_create_missions(user_id)
-        await query.answer(f"🎟 کوپن روزانه: +{coupon_reward} LIBER!", show_alert=True)
-        await query.edit_message_text(
-            f"🎯 همه‌ی مأموریت‌های امروز کامل شد! 🎉\n🎟 کوپن روزانه گرفتی: +{coupon_reward} LIBER",
-            reply_markup=missions_keyboard(missions, user_id),
-        )
-        return
-
-    if data == "mis_refresh":
-        missions = _get_or_create_missions(user_id)
-        done = sum(1 for m in missions if m["completed"])
-        await query.edit_message_text(
-            f"🎯 مأموریت‌های امروز ({done}/{len(missions)} انجام‌شده)\n\nروی هرکدوم بزن تا تیک بخوره:",
-            reply_markup=missions_keyboard(missions, user_id),
-        )
-        return
-
-    if data.startswith("mis_done_"):
-        mission_id = int(data[len("mis_done_"):])
-        with closing(get_conn()) as conn:
-            mission = conn.execute(
-                "SELECT * FROM missions WHERE mission_id = ? AND user_id = ?", (mission_id, user_id)
-            ).fetchone()
-
-        if not mission or mission["completed"]:
-            await query.answer("قبلاً انجام شده یا پیدا نشد.", show_alert=True)
-            return
-
-        with closing(get_conn()) as conn, conn:
-            conn.execute("UPDATE missions SET completed = 1 WHERE mission_id = ?", (mission_id,))
-
-        add_currency(user_id, liber=mission["reward_liber"])
-        add_xp(user_id, mission["reward_xp"])
-        log_action(user_id, "MISSION_COMPLETE", mission["description"])
-
-        missions = _get_or_create_missions(user_id)
-        done = sum(1 for m in missions if m["completed"])
-        await query.answer(f"✅ +{mission['reward_liber']:.0f} LIBER, +{mission['reward_xp']} XP", show_alert=True)
-        await query.edit_message_text(
-            f"🎯 مأموریت‌های امروز ({done}/{len(missions)} انجام‌شده)\n\nروی هرکدوم بزن تا تیک بخوره:",
-            reply_markup=missions_keyboard(missions, user_id),
-        )
-
-
-async def complete_mission(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Command fallback: /complete شماره (button checklist via 🎯 مأموریت‌ها is the main path)."""
-    user_id = update.effective_user.id
-
-    if not context.args:
-        await update.message.reply_text("از دکمه‌ی 🎯 مأموریت‌ها استفاده کن، یا: /complete شماره")
-        return
-
-    try:
-        mission_id = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("شماره نامعتبر است.")
-        return
-
-    with closing(get_conn()) as conn:
-        mission = conn.execute(
-            "SELECT * FROM missions WHERE mission_id = ? AND user_id = ?",
-            (mission_id, user_id),
-        ).fetchone()
-
-    if not mission:
-        await update.message.reply_text("مأموریت پیدا نشد.")
-        return
-    if mission["completed"]:
-        await update.message.reply_text("این مأموریت قبلاً تکمیل شده.")
-        return
-
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            "UPDATE missions SET completed = 1 WHERE mission_id = ?", (mission_id,)
-        )
-
-    add_currency(user_id, liber=mission["reward_liber"])
-    add_xp(user_id, mission["reward_xp"])
-
-    log_action(user_id, "MISSION_COMPLETE", mission["description"])
-    await update.message.reply_text(
-        f"✅ مأموریت «{mission['description']}» تکمیل شد!\n"
-        f"+{mission['reward_liber']} LIBER, +{mission['reward_xp']} XP"
-    )
-
-# ---------------------------------------------------------------------------
-# Achievements
-# ---------------------------------------------------------------------------
-
-ACHIEVEMENT_LIST = [
-    ("اولین قدم", "عادی"),
-    ("تاجر تازه‌کار", "عادی"),
-    ("بنیان‌گذار کشور", "کمیاب"),
-    ("سرمایه‌گذار حرفه‌ای", "کمیاب"),
-    ("افسانه LIBER", "افسانه‌ای"),
-]
-
-async def grant_achievement(user_id: int, name: str, rarity: str):
-    with closing(get_conn()) as conn:
-        existing = conn.execute(
-            "SELECT * FROM achievements WHERE user_id = ? AND name = ?",
-            (user_id, name),
-        ).fetchone()
-    if existing:
-        return False
-
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            """INSERT INTO achievements (user_id, name, rarity, achieved_at)
-               VALUES (?, ?, ?, ?)""",
-            (user_id, name, rarity, datetime.utcnow().isoformat()),
-        )
-    return True
-
-async def achievements_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    with closing(get_conn()) as conn:
-        rows = conn.execute(
-            "SELECT name, rarity, achieved_at FROM achievements WHERE user_id = ?",
-            (user_id,),
-        ).fetchall()
-
-    if not rows:
-        await update.message.reply_text("هنوز دستاوردی کسب نکرده‌ای.")
-        return
-
-    text = "🎖 دستاوردهای شما\n\n"
-    for r in rows:
-        text += f"🏅 {r['name']} ({r['rarity']}) — {r['achieved_at'][:10]}\n"
-
-    await update.message.reply_text(text)
-
-# ---------------------------------------------------------------------------
-# Alliances
-# ---------------------------------------------------------------------------
-
-async def create_alliance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    with closing(get_conn()) as conn:
-        already_member = conn.execute(
-            "SELECT * FROM alliance_members WHERE user_id = ?", (user_id,)
-        ).fetchone()
-    if already_member:
-        await update.message.reply_text("شما قبلاً عضو یک اتحاد هستید.")
-        return
-
-    if not context.args:
-        await update.message.reply_text("استفاده: /create_alliance نام")
-        return
-
-    name = " ".join(context.args)[:30]
-
-    try:
-        with closing(get_conn()) as conn, conn:
-            cursor = conn.execute(
-                """INSERT INTO alliances (name, leader_id, created_at)
-                   VALUES (?, ?, ?)""",
-                (name, user_id, datetime.utcnow().isoformat()),
-            )
-            alliance_id = cursor.lastrowid
-            conn.execute(
-                """INSERT INTO alliance_members (user_id, alliance_id, joined_at)
-                   VALUES (?, ?, ?)""",
-                (user_id, alliance_id, datetime.utcnow().isoformat()),
-            )
-    except sqlite3.IntegrityError:
-        await update.message.reply_text("این نام قبلاً استفاده شده.")
-        return
-
-    log_action(user_id, "CREATE_ALLIANCE", name)
-    await update.message.reply_text(f"🤝 اتحاد «{name}» ساخته شد!")
-
-async def join_alliance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    with closing(get_conn()) as conn:
-        already_member = conn.execute(
-            "SELECT * FROM alliance_members WHERE user_id = ?", (user_id,)
-        ).fetchone()
-    if already_member:
-        await update.message.reply_text("شما قبلاً عضو یک اتحاد هستید.")
-        return
-
-    if not context.args:
-        await update.message.reply_text("استفاده: /join_alliance نام")
-        return
-
-    name = " ".join(context.args)
-
-    with closing(get_conn()) as conn:
-        alliance = conn.execute(
-            "SELECT * FROM alliances WHERE name = ?", (name,)
-        ).fetchone()
-
-    if not alliance:
-        await update.message.reply_text("اتحادی با این نام پیدا نشد.")
-        return
-
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            """INSERT INTO alliance_members (user_id, alliance_id, joined_at)
-               VALUES (?, ?, ?)""",
-            (user_id, alliance["alliance_id"], datetime.utcnow().isoformat()),
-        )
-
-    log_action(user_id, "JOIN_ALLIANCE", name)
-    await update.message.reply_text(f"🤝 با موفقیت به اتحاد «{name}» پیوستی!")
-
-async def alliance_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    with closing(get_conn()) as conn:
-        membership = conn.execute(
-            "SELECT * FROM alliance_members WHERE user_id = ?", (user_id,)
-        ).fetchone()
-
-        if not membership:
-            await update.message.reply_text(
-                "شما عضو هیچ اتحادی نیستید.\n"
-                "/create_alliance نام — برای ساخت\n"
-                "/join_alliance نام — برای پیوستن"
-            )
-            return
-
-        alliance = conn.execute(
-            "SELECT * FROM alliances WHERE alliance_id = ?",
-            (membership["alliance_id"],),
-        ).fetchone()
-
-        members = conn.execute(
-            """SELECT u.first_name FROM alliance_members am
-               JOIN users u ON u.user_id = am.user_id
-               WHERE am.alliance_id = ?""",
-            (alliance["alliance_id"],),
-        ).fetchall()
-
-    members_text = "\n".join(f"  • {m['first_name']}" for m in members)
-
-    text = (
-        f"🤝 اتحاد: {alliance['name']}\n"
-        f"💰 خزانه: {alliance['treasury']:.2f} LIBER\n"
-        f"👥 اعضا ({len(members)}):\n{members_text}"
-    )
-    await update.message.reply_text(text)
-
-# ---------------------------------------------------------------------------
-# Shop & Virtual VIP (no real payment — cosmetic / in-game currency only)
-# ---------------------------------------------------------------------------
-
-SHOP_ITEMS = {
-    "avatar_gold": {"name": "🖼 آواتار طلایی", "cost": 300},
-    "frame_diamond": {"name": "🎨 قاب الماسی", "cost": 500},
-    "title_legend": {"name": "🏷 لقب افسانه‌ای", "cost": 800},
-    "energy_pack": {"name": "⚡ بسته انرژی (+50)", "cost": 100},
-}
-
-VIP_TIERS = {
-    "normal_3m": {"name": "🥈 اشتراک عادی (۳ ماهه)", "cost_liber": 4000, "duration_days": 90,
-                  "perk": "درآمد و XP +10٪"},
-    "normal_6m": {"name": "🥈 اشتراک عادی (۶ ماهه)", "cost_liber": 7000, "duration_days": 180,
-                  "perk": "درآمد و XP +10٪"},
-    "dragon_3m": {"name": "🐉 اشتراک دراگون (۳ ماهه)", "cost_liber": 9000, "duration_days": 90,
-                  "perk": "درآمد و XP +25٪ + صندوق طلایی رایگان هفتگی"},
-    "dragon_6m": {"name": "🐉 اشتراک دراگون (۶ ماهه)", "cost_liber": 15000, "duration_days": 180,
-                  "perk": "درآمد و XP +25٪ + صندوق طلایی رایگان هفتگی"},
-    "legend_3m": {"name": "👑 اشتراک لیبری لجند (۳ ماهه)", "cost_liber": 20000, "duration_days": 90,
-                  "perk": "درآمد و XP +50٪ + صندوق الماسی رایگان هفتگی + قاب اختصاصی"},
-    "legend_6m": {"name": "👑 اشتراک لیبری لجند (۶ ماهه)", "cost_liber": 32000, "duration_days": 180,
-                  "perk": "درآمد و XP +50٪ + صندوق الماسی رایگان هفتگی + قاب اختصاصی"},
-}
-
-async def shop_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🏪 فروشگاه (پرداخت با LIBER داخل‌بازی)\n\nروی هر آیتم بزن تا بخری:",
-        reply_markup=shop_keyboard(),
-    )
-
-
-def shop_keyboard():
-    rows = []
-    for key, item in SHOP_ITEMS.items():
-        rows.append([InlineKeyboardButton(f"{item['name']} — {item['cost']} LIBER", callback_data=f"shop_buy_{key}")])
-    for key, tier in VIP_TIERS.items():
-        rows.append([InlineKeyboardButton(f"⭐ {tier['name']} — {tier['cost_liber']} LIBER", callback_data=f"shop_vip_{key}")])
-    return InlineKeyboardMarkup(rows)
-
-
-async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = query.from_user.id
-    data = query.data
-    await query.answer()
-
-    if data.startswith("shop_buy_"):
-        key = data[len("shop_buy_"):]
-        item = SHOP_ITEMS.get(key)
-        user = get_user(user_id)
-        if not item or not user:
-            await query.edit_message_text("❌ خطا در خرید.", reply_markup=shop_keyboard())
-            return
-        if user["liber"] < item["cost"]:
-            await query.answer("❌ LIBER کافی نیست.", show_alert=True)
-            return
-        with closing(get_conn()) as conn, conn:
-            conn.execute("UPDATE users SET liber = liber - ? WHERE user_id = ?", (item["cost"], user_id))
-            conn.execute(
-                "INSERT INTO shop_purchases (user_id, item, cost_liber, purchased_at) VALUES (?, ?, ?, ?)",
-                (user_id, key, item["cost"], datetime.utcnow().isoformat()),
-            )
-            if key == "energy_pack":
-                conn.execute("UPDATE users SET energy = energy + 50 WHERE user_id = ?", (user_id,))
-        log_action(user_id, "SHOP_BUY", key)
-        await query.edit_message_text(f"✅ {item['name']} خریداری شد!", reply_markup=shop_keyboard())
-        return
-
-    if data.startswith("shop_vip_"):
-        key = data[len("shop_vip_"):]
-        tier = VIP_TIERS.get(key)
-        user = get_user(user_id)
-        if not tier or not user:
-            await query.edit_message_text("❌ خطا.", reply_markup=shop_keyboard())
-            return
-        if user["liber"] < tier["cost_liber"]:
-            await query.answer("❌ LIBER کافی نیست.", show_alert=True)
-            return
-        now = datetime.utcnow()
-        expires_at = now + timedelta(days=tier["duration_days"])
-        with closing(get_conn()) as conn, conn:
-            conn.execute("UPDATE users SET liber = liber - ? WHERE user_id = ?", (tier["cost_liber"], user_id))
-            conn.execute(
-                """INSERT INTO vip_status (user_id, tier, activated_at, expires_at) VALUES (?, ?, ?, ?)
-                   ON CONFLICT(user_id) DO UPDATE SET tier=excluded.tier, activated_at=excluded.activated_at, expires_at=excluded.expires_at""",
-                (user_id, key, now.isoformat(), expires_at.isoformat()),
-            )
-        log_action(user_id, "BUY_VIP", key)
-        await query.edit_message_text(
-            f"⭐ {tier['name']} فعال شد تا {expires_at.strftime('%Y-%m-%d')}!", reply_markup=shop_keyboard()
-        )
-
-async def buy_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    if not context.args or context.args[0] not in SHOP_ITEMS:
-        await update.message.reply_text("آیتم نامعتبر. از /shop لیست را ببین.")
-        return
-
-    key = context.args[0]
-    item = SHOP_ITEMS[key]
-
-    if user["liber"] < item["cost"]:
-        await update.message.reply_text("LIBER کافی نیست.")
-        return
-
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            "UPDATE users SET liber = liber - ? WHERE user_id = ?",
-            (item["cost"], user_id),
-        )
-        conn.execute(
-            """INSERT INTO shop_purchases (user_id, item, cost_liber, purchased_at)
-               VALUES (?, ?, ?, ?)""",
-            (user_id, key, item["cost"], datetime.utcnow().isoformat()),
-        )
-        if key == "energy_pack":
-            conn.execute(
-                "UPDATE users SET energy = energy + 50 WHERE user_id = ?", (user_id,)
-            )
-
-    log_action(user_id, "SHOP_BUY", key)
-    await update.message.reply_text(f"✅ {item['name']} خریداری شد!")
-
-async def buy_vip(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """VIP purchased entirely with in-game LIBER — no real payment gateway."""
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    if not context.args or context.args[0] not in VIP_TIERS:
-        options = ", ".join(VIP_TIERS.keys())
-        await update.message.reply_text(f"استفاده: /buy_vip نوع\nانواع: {options}")
-        return
-
-    key = context.args[0]
-    tier = VIP_TIERS[key]
-
-    if user["liber"] < tier["cost_liber"]:
-        await update.message.reply_text("LIBER کافی نیست.")
-        return
-
-    now = datetime.utcnow()
-    expires_at = now + timedelta(days=tier["duration_days"])
-
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            "UPDATE users SET liber = liber - ? WHERE user_id = ?",
-            (tier["cost_liber"], user_id),
-        )
-        conn.execute(
-            """INSERT INTO vip_status (user_id, tier, activated_at, expires_at)
-               VALUES (?, ?, ?, ?)
-               ON CONFLICT(user_id) DO UPDATE SET
-                 tier = excluded.tier,
-                 activated_at = excluded.activated_at,
-                 expires_at = excluded.expires_at""",
-            (user_id, key, now.isoformat(), expires_at.isoformat()),
-        )
-
-    log_action(user_id, "BUY_VIP", key)
-    await update.message.reply_text(
-        f"⭐ {tier['name']} فعال شد تا {expires_at.strftime('%Y-%m-%d')}!"
-    )
-
-async def vip_status_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    with closing(get_conn()) as conn:
-        status = conn.execute(
-            "SELECT * FROM vip_status WHERE user_id = ?", (user_id,)
-        ).fetchone()
-
-    if not status:
-        await update.message.reply_text("شما در حال حاضر VIP نیستید. /shop را ببین.")
-        return
-
-    expires_at = datetime.fromisoformat(status["expires_at"])
-    active = datetime.utcnow() < expires_at
-    tier_name = VIP_TIERS.get(status["tier"], {}).get("name", status["tier"])
-
-    text = (
-        f"⭐ وضعیت VIP\n\n"
-        f"سطح: {tier_name}\n"
-        f"وضعیت: {'✅ فعال' if active else '❌ منقضی شده'}\n"
-        f"تاریخ انقضا: {expires_at.strftime('%Y-%m-%d')}"
-    )
-    await update.message.reply_text(text)
-
-# ---------------------------------------------------------------------------
-# Automatic World Events (entertainment only)
-# ---------------------------------------------------------------------------
-
-WORLD_EVENTS = [
-    {
-        "name": "🎉 جشنواره جهانی",
-        "description": "همه بازیکنان ۲۴ ساعت XP دوبرابر می‌گیرند.",
-        "effect": "double_xp",
-    },
-    {
-        "name": "📉 رکود اقتصادی",
-        "description": "قیمت بازار به‌طور موقت کاهش می‌یابد.",
-        "effect": "market_crash",
-    },
-    {
-        "name": "⛏ کشف معدن جدید",
-        "description": "بازیکنانی که معدن دارند بونوس دریافت می‌کنند.",
-        "effect": "mine_bonus",
-    },
-    {
-        "name": "💰 باران LIBER",
-        "description": "همه کاربران فعال ۳۰ LIBER هدیه می‌گیرند.",
-        "effect": "liber_rain",
-    },
-]
-
-async def trigger_random_event(context: ContextTypes.DEFAULT_TYPE):
-    event = random.choice(WORLD_EVENTS)
-    now = datetime.utcnow()
-    ends_at = now + timedelta(hours=6)
-
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            """INSERT INTO events (name, description, started_at, ends_at, effect)
-               VALUES (?, ?, ?, ?, ?)""",
-            (event["name"], event["description"], now.isoformat(), ends_at.isoformat(), event["effect"]),
-        )
-
-        if event["effect"] == "liber_rain":
-            conn.execute("UPDATE users SET liber = liber + 30 WHERE banned = 0")
-
-        if event["effect"] == "market_crash":
-            current = get_market_price()
-            new_price = max(0.5, round(current * 0.85, 4))
-            conn.execute(
-                "INSERT INTO market (price, updated_at) VALUES (?, ?)",
-                (new_price, now.isoformat()),
-            )
-
-    logger.info(f"World event triggered: {event['name']}")
-
-    with closing(get_conn()) as conn:
-        rows = conn.execute("SELECT user_id FROM users WHERE banned = 0").fetchall()
-
-    for row in rows:
-        try:
-            await context.bot.send_message(
-                row["user_id"],
-                f"🌍 رویداد جهانی: {event['name']}\n{event['description']}",
-            )
-        except Exception:
-            pass
-
-async def events_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    with closing(get_conn()) as conn:
-        rows = conn.execute(
-            "SELECT * FROM events ORDER BY event_id DESC LIMIT 5"
-        ).fetchall()
-
-    if not rows:
-        await update.message.reply_text("رویداد فعالی وجود ندارد.")
-        return
-
-    text = "📅 آخرین رویدادهای جهانی\n\n"
-    for r in rows:
-        text += f"{r['name']} — {r['started_at'][:16]}\n{r['description']}\n\n"
-
-    await update.message.reply_text(text)
-
-# ---------------------------------------------------------------------------
-# League / Season System
-# ---------------------------------------------------------------------------
-
-LEAGUES = ["bronze", "silver", "gold", "platinum", "diamond", "titan", "legendary", "galactic"]
-LEAGUE_NAMES = {
-    "bronze": "🥉 برنز", "silver": "🥈 نقره", "gold": "🥇 طلا",
-    "platinum": "🔷 پلاتینیوم", "diamond": "💎 الماس", "titan": "🔱 تایتان",
-    "legendary": "👑 افسانه‌ای", "galactic": "🌌 کهکشانی",
-}
-LEAGUE_THRESHOLDS = {
-    "bronze": 0, "silver": 200, "gold": 500, "platinum": 1000,
-    "diamond": 2000, "titan": 4000, "legendary": 8000, "galactic": 15000,
-}
-
-def get_active_season():
-    with closing(get_conn()) as conn:
-        season = conn.execute(
-            "SELECT * FROM seasons WHERE active = 1 ORDER BY season_id DESC LIMIT 1"
-        ).fetchone()
-    if season:
-        return season
-
-    now = datetime.utcnow()
-    ends_at = now + timedelta(days=30)
-    with closing(get_conn()) as conn, conn:
-        cursor = conn.execute(
-            """INSERT INTO seasons (name, started_at, ends_at, active)
-               VALUES (?, ?, ?, 1)""",
-            (f"فصل {now.strftime('%Y-%m')}", now.isoformat(), ends_at.isoformat()),
-        )
-    return get_active_season()
-
-def add_season_points(user_id: int, points: int):
-    season = get_active_season()
-    with closing(get_conn()) as conn, conn:
-        existing = conn.execute(
-            "SELECT * FROM season_scores WHERE user_id = ? AND season_id = ?",
-            (user_id, season["season_id"]),
-        ).fetchone()
-
-        if existing:
-            new_points = existing["points"] + points
-        else:
-            new_points = points
-
-        new_league = "bronze"
-        for league in LEAGUES:
-            if new_points >= LEAGUE_THRESHOLDS[league]:
-                new_league = league
-
-        conn.execute(
-            """INSERT INTO season_scores (user_id, season_id, points, league)
-               VALUES (?, ?, ?, ?)
-               ON CONFLICT(user_id, season_id) DO UPDATE SET
-                 points = excluded.points, league = excluded.league""",
-            (user_id, season["season_id"], new_points, new_league),
-        )
-
-async def render_league_text(user_id: int) -> str:
-    season = get_active_season()
-
-    with closing(get_conn()) as conn:
-        score = conn.execute(
-            "SELECT * FROM season_scores WHERE user_id = ? AND season_id = ?",
-            (user_id, season["season_id"]),
-        ).fetchone()
-
-    points = score["points"] if score else 0
-    league = score["league"] if score else "bronze"
-
-    text = (
-        f"🏆 {season['name']}\n\n"
-        f"لیگ فعلی شما: {LEAGUE_NAMES[league]}\n"
-        f"امتیاز: {points}\n\n"
-        "لیگ‌های بازی:\n"
-    )
-    for lg in LEAGUES:
-        text += f"  {LEAGUE_NAMES[lg]} — {LEAGUE_THRESHOLDS[lg]}+ امتیاز\n"
-    return text
-
-
-async def league_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = await render_league_text(update.effective_user.id)
-    await update.message.reply_text(text)
-
-
-async def render_season_top_text() -> str:
-    season = get_active_season()
-
-    with closing(get_conn()) as conn:
-        rows = conn.execute(
-            """SELECT u.first_name, s.points, s.league FROM season_scores s
-               JOIN users u ON u.user_id = s.user_id
-               WHERE s.season_id = ?
-               ORDER BY s.points DESC LIMIT 10""",
-            (season["season_id"],),
-        ).fetchall()
-
-    if not rows:
-        return "هنوز امتیازی در این فصل ثبت نشده."
-
-    text = f"🏆 برترین‌های {season['name']}\n\n"
-    for i, r in enumerate(rows, start=1):
-        text += f"{i}. {r['first_name']} — {LEAGUE_NAMES[r['league']]} ({r['points']} امتیاز)\n"
-    return text
-
-
-async def season_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = await render_season_top_text()
-    await update.message.reply_text(text)
-
-# ---------------------------------------------------------------------------
-# Mini-Games (entertainment only — virtual LIBER wagers, no cash out)
-# ---------------------------------------------------------------------------
-
-async def run_wheel(user_id: int, bet: float) -> str:
-    user = get_user(user_id)
-    if not user:
-        return "ابتدا با /start ثبت‌نام کن."
-    if bet <= 0 or bet > user["liber"]:
-        return "❌ موجودی LIBER کافی نیست."
-
-    outcomes = [0, 0.5, 1, 1.5, 2, 3, 5]
-    weights = [25, 20, 20, 15, 10, 7, 3]
-    multiplier = random.choices(outcomes, weights=weights, k=1)[0]
-    result = round(bet * multiplier, 2)
-    net = result - bet
-
-    with closing(get_conn()) as conn, conn:
-        conn.execute("UPDATE users SET liber = liber - ? + ? WHERE user_id = ?", (bet, result, user_id))
-        conn.execute(
-            "INSERT INTO game_history (user_id, game_type, bet, result, played_at) VALUES (?, 'wheel', ?, ?, ?)",
-            (user_id, bet, result, datetime.utcnow().isoformat()),
-        )
-
-    add_season_points(user_id, max(0, int(net)))
-    log_action(user_id, "GAME_WHEEL", f"bet={bet} multiplier={multiplier}")
-    emoji = "🎉" if multiplier >= 1 else "😔"
-    return f"🎰 گردونه چرخید!\nضریب: x{multiplier}\nشرط: {bet:.0f} LIBER\nنتیجه: {result:.2f} LIBER {emoji}"
-
-
-async def game_wheel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Command fallback: /wheel مقدار_شرط (button flow via 🎮 بازی‌ها is the main path)."""
-    if not context.args:
-        await update.message.reply_text("از دکمه‌ی 🎮 بازی‌ها استفاده کن، یا: /wheel مقدار_شرط")
-        return
-    try:
-        bet = float(context.args[0])
-    except ValueError:
-        await update.message.reply_text("عدد معتبر وارد کن.")
-        return
-    text = await run_wheel(update.effective_user.id, bet)
-    await update.message.reply_text(text)
-
-async def run_lucky(user_id: int, bet: float) -> str:
-    user = get_user(user_id)
-    if not user:
-        return "ابتدا با /start ثبت‌نام کن."
-    if bet <= 0 or bet > user["liber"]:
-        return "❌ موجودی LIBER کافی نیست."
-
-    win = random.random() < 0.45
-    result = bet * 2 if win else 0
-
-    with closing(get_conn()) as conn, conn:
-        conn.execute("UPDATE users SET liber = liber - ? + ? WHERE user_id = ?", (bet, result, user_id))
-        conn.execute(
-            "INSERT INTO game_history (user_id, game_type, bet, result, played_at) VALUES (?, 'lucky', ?, ?, ?)",
-            (user_id, bet, result, datetime.utcnow().isoformat()),
-        )
-
-    log_action(user_id, "GAME_LUCKY", f"bet={bet} win={win}")
-    return f"🍀 بردی! +{result:.2f} LIBER" if win else f"❌ باختی. -{bet:.2f} LIBER"
-
-
-async def game_lucky(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Command fallback: /lucky مقدار_شرط (button flow via 🎮 بازی‌ها is the main path)."""
-    if not context.args:
-        await update.message.reply_text("از دکمه‌ی 🎮 بازی‌ها استفاده کن، یا: /lucky مقدار_شرط")
-        return
-    try:
-        bet = float(context.args[0])
-    except ValueError:
-        await update.message.reply_text("عدد معتبر وارد کن.")
-        return
-    text = await run_lucky(update.effective_user.id, bet)
-    await update.message.reply_text(text)
-
-async def run_treasure(user_id: int) -> str:
-    user = get_user(user_id)
-    if not user:
-        return "ابتدا با /start ثبت‌نام کن."
-
-    with closing(get_conn()) as conn:
-        cooldown = conn.execute(
-            "SELECT * FROM chest_cooldowns WHERE user_id = ?", (user_id,)
-        ).fetchone()
-
-    now = datetime.utcnow()
-    if cooldown:
-        last = datetime.fromisoformat(cooldown["last_chest"])
-        if now - last < timedelta(hours=6):
-            remaining = timedelta(hours=6) - (now - last)
-            mins = int(remaining.total_seconds() // 60)
-            return f"⏳ گنج بعدی تا {mins} دقیقه دیگر آماده می‌شود."
-
-    reward = random.randint(10, 60)
-    add_currency(user_id, liber=reward)
-
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            """INSERT INTO chest_cooldowns (user_id, last_chest) VALUES (?, ?)
-               ON CONFLICT(user_id) DO UPDATE SET last_chest = excluded.last_chest""",
-            (user_id, now.isoformat()),
-        )
-
-    log_action(user_id, "GAME_TREASURE", f"reward={reward}")
-    return f"🎁 گنج پیدا شد! +{reward} LIBER"
-
-
-async def game_treasure(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Command fallback: /treasure (button flow via 🎮 بازی‌ها is the main path)."""
-    text = await run_treasure(update.effective_user.id)
-    await update.message.reply_text(text)
-
-CHESTS = {
-    "free": {"name": "🎁 صندوق رایگان", "cost": 0, "min": 5, "max": 30},
-    "bronze": {"name": "🥉 صندوق برنزی", "cost": 100, "min": 50, "max": 150},
-    "silver": {"name": "🥈 صندوق نقره‌ای", "cost": 300, "min": 150, "max": 450},
-    "gold": {"name": "🥇 صندوق طلایی", "cost": 700, "min": 400, "max": 1100},
-    "diamond": {"name": "💎 صندوق الماسی", "cost": 1500, "min": 900, "max": 2500},
-}
-
-async def open_chest(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    if not context.args or context.args[0] not in CHESTS:
-        options = ", ".join(CHESTS.keys())
-        await update.message.reply_text(f"استفاده: /chest نوع\nانواع: {options}")
-        return
-
-    key = context.args[0]
-    chest = CHESTS[key]
-
-    if user["liber"] < chest["cost"]:
-        await update.message.reply_text("LIBER کافی نیست.")
-        return
-
-    reward = random.randint(chest["min"], chest["max"])
-
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            "UPDATE users SET liber = liber - ? + ? WHERE user_id = ?",
-            (chest["cost"], reward, user_id),
-        )
-
-    log_action(user_id, "OPEN_CHEST", f"{key} reward={reward}")
-    await update.message.reply_text(
-        f"{chest['name']} باز شد!\nدریافتی: {reward} LIBER (هزینه: {chest['cost']})"
-    )
-
-
-def chest_keyboard():
-    rows = [[InlineKeyboardButton(f"{c['name']} — {c['cost']} LIBER", callback_data=f"chest_open_{k}")]
-            for k, c in CHESTS.items()]
-    return InlineKeyboardMarkup(rows)
-
-
-async def chest_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🎁 صندوق‌ها — روی هرکدوم بزن تا باز بشه:", reply_markup=chest_keyboard())
-
-
-async def chest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = query.from_user.id
-    key = query.data[len("chest_open_"):]
-    await query.answer()
-
-    chest = CHESTS.get(key)
-    user = get_user(user_id)
-    if not chest or not user:
-        await query.edit_message_text("❌ خطا.", reply_markup=chest_keyboard())
-        return
-    if user["liber"] < chest["cost"]:
-        await query.answer("❌ LIBER کافی نیست.", show_alert=True)
-        return
-
-    reward = random.randint(chest["min"], chest["max"])
-    with closing(get_conn()) as conn, conn:
-        conn.execute("UPDATE users SET liber = liber - ? + ? WHERE user_id = ?", (chest["cost"], reward, user_id))
-    log_action(user_id, "OPEN_CHEST", f"{key} reward={reward}")
-    await query.edit_message_text(
-        f"{chest['name']} باز شد!\n🎉 دریافتی: {reward} LIBER (هزینه: {chest['cost']})",
-        reply_markup=chest_keyboard(),
-    )
-
-_pending_bet = {}  # user_id -> current bet amount for wheel/lucky stepper
-
-
-def games_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎰 گردونه شانس", callback_data="game_menu_wheel"),
-         InlineKeyboardButton("🍀 شیر یا خط", callback_data="game_menu_lucky")],
-        [InlineKeyboardButton("🎁 گنج رایگان", callback_data="game_go_treasure"),
-         InlineKeyboardButton("🏆 لیگ فصلی", callback_data="game_go_league")],
-        [InlineKeyboardButton("📊 رتبه‌بندی فصل", callback_data="game_go_season_top")],
-    ])
-
-
-def bet_stepper_keyboard(game: str, amount: int):
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("-50", callback_data=f"game_{game}_bet_-50"),
-         InlineKeyboardButton("-10", callback_data=f"game_{game}_bet_-10"),
-         InlineKeyboardButton(f"💰 {amount}", callback_data="mkt_noop"),
-         InlineKeyboardButton("+10", callback_data=f"game_{game}_bet_10"),
-         InlineKeyboardButton("+50", callback_data=f"game_{game}_bet_50")],
-        [InlineKeyboardButton("🎯 شرط‌بندی!", callback_data=f"game_{game}_play"),
-         InlineKeyboardButton("🔙 بازگشت", callback_data="game_back")],
-    ])
-
-
-async def games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🎮 بازی‌ها (سرگرمی - LIBER داخل‌بازی)\n\nروی هرکدوم بزن، بدون تایپ دستور:",
-        reply_markup=games_keyboard(),
-    )
-
-
-async def games_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = query.from_user.id
-    data = query.data
-    await query.answer()
-
-    if data == "game_back":
-        await query.edit_message_text("🎮 بازی‌ها — روی هرکدوم بزن:", reply_markup=games_keyboard())
-        return
-
-    if data == "game_go_treasure":
-        text = await run_treasure(user_id)
-        await query.edit_message_text(text, reply_markup=games_keyboard())
-        return
-
-    if data == "game_go_league":
-        text = await render_league_text(user_id)
-        await query.edit_message_text(text, reply_markup=games_keyboard())
-        return
-
-    if data == "game_go_season_top":
-        text = await render_season_top_text()
-        await query.edit_message_text(text, reply_markup=games_keyboard())
-        return
-
-    if data in ("game_menu_wheel", "game_menu_lucky"):
-        game = "wheel" if data == "game_menu_wheel" else "lucky"
-        _pending_bet[user_id] = 20
-        label = "گردونه شانس" if game == "wheel" else "شیر یا خط"
-        await query.edit_message_text(
-            f"🎯 مبلغ شرط برای {label} رو تنظیم کن، بعد «شرط‌بندی» بزن:",
-            reply_markup=bet_stepper_keyboard(game, 20),
-        )
-        return
-
-    if "_bet_" in data:
-        parts = data.split("_")
-        game, delta = parts[1], int(parts[3])
-        amount = max(10, _pending_bet.get(user_id, 20) + delta)
-        _pending_bet[user_id] = amount
-        await query.edit_message_reply_markup(reply_markup=bet_stepper_keyboard(game, amount))
-        return
-
-    if data.endswith("_play"):
-        game = data.split("_")[1]
-        bet = _pending_bet.get(user_id, 20)
-        text = await run_wheel(user_id, bet) if game == "wheel" else await run_lucky(user_id, bet)
-        await query.edit_message_text(text, reply_markup=games_keyboard())
-
-# ---------------------------------------------------------------------------
-# Auction (virtual LIBER only — no real payment)
-# ---------------------------------------------------------------------------
-
-AUCTION_INCREMENT = 10
-AUCTION_ITEMS = [
-    "🎁 جعبه طلایی", "🖼 قاب کهکشانی", "🏷 لقب افسانه‌ای",
-    "💎 آواتار الماسی", "🎖 مدال ویژه فصل",
-]
-
-def get_active_auction():
-    with closing(get_conn()) as conn:
-        auction = conn.execute(
-            "SELECT * FROM auctions WHERE active = 1 ORDER BY auction_id DESC LIMIT 1"
-        ).fetchone()
-    return auction
-
-def create_new_auction():
-    item = random.choice(AUCTION_ITEMS)
-    now = datetime.utcnow()
-    ends_at = now + timedelta(hours=12)
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            """INSERT INTO auctions (item_name, current_price, current_winner, active, created_at, ends_at)
-               VALUES (?, ?, NULL, 1, ?, ?)""",
-            (item, 50, now.isoformat(), ends_at.isoformat()),
-        )
-    return get_active_auction()
-
-async def auction_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    auction = get_active_auction()
-    if not auction:
-        auction = create_new_auction()
-
-    winner_text = "هنوز کسی شرکت نکرده"
-    if auction["current_winner"]:
-        winner = get_user(auction["current_winner"])
-        if winner:
-            winner_text = winner["first_name"]
-
-    ends_at = datetime.fromisoformat(auction["ends_at"])
-    remaining = ends_at - datetime.utcnow()
-    hrs = max(0, int(remaining.total_seconds() // 3600))
-
-    text = (
-        f"🏷 مزایده LIBER\n\n"
-        f"🎁 آیتم: {auction['item_name']}\n"
-        f"💰 قیمت فعلی: {auction['current_price']} LIBER\n"
-        f"🏆 برنده فعلی: {winner_text}\n"
-        f"⏳ زمان باقی‌مانده: {hrs} ساعت\n\n"
-        f"برای شرکت: /bid"
-    )
-    await update.message.reply_text(text)
-
-async def auction_bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    auction = get_active_auction()
-    if not auction:
-        auction = create_new_auction()
-
-    ends_at = datetime.fromisoformat(auction["ends_at"])
-    if datetime.utcnow() >= ends_at:
-        with closing(get_conn()) as conn, conn:
-            conn.execute(
-                "UPDATE auctions SET active = 0 WHERE auction_id = ?",
-                (auction["auction_id"],),
-            )
-        if auction["current_winner"]:
-            add_season_points(auction["current_winner"], 100)
-        auction = create_new_auction()
-        await update.message.reply_text(
-            "⏳ مزایده قبلی به پایان رسید و مزایده جدیدی شروع شد. دوباره امتحان کن: /bid"
-        )
-        return
-
-    next_price = auction["current_price"] + AUCTION_INCREMENT
-
-    if user["liber"] < next_price:
-        await update.message.reply_text(
-            f"موجودی کافی نیست. برای پیشنهاد بعدی نیاز به {next_price} LIBER داری."
-        )
-        return
-
-    # refund the previous highest bidder (virtual, in-game only)
-    if auction["current_winner"] and auction["current_winner"] != user_id:
-        add_currency(auction["current_winner"], liber=auction["current_price"])
-
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            "UPDATE users SET liber = liber - ? WHERE user_id = ?",
-            (next_price, user_id),
-        )
-        conn.execute(
-            "UPDATE auctions SET current_price = ?, current_winner = ? WHERE auction_id = ?",
-            (next_price, user_id, auction["auction_id"]),
-        )
-
-    log_action(user_id, "AUCTION_BID", f"price={next_price}")
-    await update.message.reply_text(
-        f"✅ پیشنهاد ثبت شد! شما در حال حاضر برنده فعلی مزایده «{auction['item_name']}» هستید.\n"
-        f"قیمت فعلی: {next_price} LIBER"
-    )
-
-# ---------------------------------------------------------------------------
-# Help & Settings
-# ---------------------------------------------------------------------------
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "❓ راهنمای LIBER\n\n"
-        "👤 /profile — پروفایل\n"
-        "💰 /wallet — کیف پول\n"
-        "🌍 /found نام — ساخت کشور\n"
-        "🏗 /build نوع — ساخت/ارتقای ساختمان\n"
-        "💹 /market — بازار LIBER\n"
-        "🟢 /buy تعداد(1-99) — خرید واحدی LIBER (قیمت با تقاضا بالا می‌ره)\n"
-        "🔴 /sell تعداد(1-99) — فروش واحدی LIBER (قیمت با عرضه پایین می‌ره)\n"
-        "🏦 /deposit مقدار — سپرده بانکی\n"
-        "📥 /claim — برداشت سود سپرده\n"
-        "📈 /invest نوع مقدار — سرمایه‌گذاری\n"
-        "🎯 /missions — مأموریت‌ها\n"
-        "🎖 /achievements — دستاوردها\n"
-        "🤝 /create_alliance نام — ساخت اتحاد\n"
-        "🏪 /shop — فروشگاه\n"
-        "⭐ /vip — وضعیت VIP\n"
-        "🎁 /daily — جایزه روزانه\n"
-        "🎰 /wheel مقدار — گردونه شانس\n"
-        "🏷 /auction , /bid — مزایده\n"
-        "🏆 /league , /season_top — لیگ فصلی\n"
-        "👥 /invite — دعوت دوستان\n"
-        "📅 /events — رویدادهای جهانی\n\n"
-        "⚠️ تمام ارزهای بازی کاملاً مجازی هستند و هدف آن‌ها فقط سرگرمی و رقابت است."
-    )
-    await update.message.reply_text(text)
-
-async def settings_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    text = (
-        "⚙ تنظیمات\n\n"
-        f"لقب فعلی: {user['title']}\n"
-        f"بیوگرافی: {user['bio'] or '—'}\n\n"
-        "برای تغییر بیوگرافی: /setbio متن\n"
-    )
-    await update.message.reply_text(text)
-
-async def set_bio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    if not context.args:
-        await update.message.reply_text("استفاده: /setbio متن_بیوگرافی")
-        return
-
-    bio_text = " ".join(context.args)[:150]
-    update_user_field(user_id, "bio", bio_text)
-    await update.message.reply_text("✅ بیوگرافی به‌روزرسانی شد.")
-
-# ---------------------------------------------------------------------------
-# Basic Anti-Spam (simple in-memory rate limiter)
-# ---------------------------------------------------------------------------
-
-_last_action_time = {}
-SPAM_MIN_INTERVAL_SECONDS = 1.0
-
-async def anti_spam_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """A lightweight guard against rapid-fire command spam. Not a full security
-    system — just prevents obvious abuse/flooding of the bot."""
-    user_id = update.effective_user.id if update.effective_user else None
-    if user_id is None:
-        return True
-
-    now = time.monotonic()
-    last = _last_action_time.get(user_id, 0)
-
-    if now - last < SPAM_MIN_INTERVAL_SECONDS:
-        log_action(user_id, "SPAM_BLOCKED", "")
-        return False
-
-    _last_action_time[user_id] = now
-    return True
-
-# ---------------------------------------------------------------------------
-# Smart Anti-Cheat System
-# ---------------------------------------------------------------------------
-# Detects abnormal click/command rates (script/bot-like behavior) using a
-# sliding time window. After CHEAT_STRIKE_LIMIT flags, the account is
-# automatically banned. This is heuristic-based, not perfect, but stops
-# obvious automation abuse without needing external services.
-
-CHEAT_WINDOW_SECONDS = 8          # sliding time window to inspect
-CHEAT_MAX_ACTIONS_IN_WINDOW = 10  # more than this many actions = suspicious
-CHEAT_STRIKE_LIMIT = 3           # auto-ban after this many flags
-
-_action_timestamps = {}   # user_id -> [timestamps]
-_cheat_strikes_cache = {}  # user_id -> count (mirrors DB, avoids extra reads)
-
-def get_cheat_strikes(user_id: int) -> int:
-    with closing(get_conn()) as conn:
-        row = conn.execute(
-            "SELECT flag_count FROM cheat_flags WHERE user_id = ?", (user_id,)
-        ).fetchone()
-    return row["flag_count"] if row else 0
-
-def add_cheat_strike(user_id: int) -> int:
-    now = datetime.utcnow().isoformat()
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            """INSERT INTO cheat_flags (user_id, flag_count, last_flag_at)
-               VALUES (?, 1, ?)
-               ON CONFLICT(user_id) DO UPDATE SET
-                 flag_count = flag_count + 1,
-                 last_flag_at = excluded.last_flag_at""",
-            (user_id, now),
-        )
-        row = conn.execute(
-            "SELECT flag_count FROM cheat_flags WHERE user_id = ?", (user_id,)
-        ).fetchone()
-    return row["flag_count"]
-
-async def check_smart_anticheat(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """Returns True if this action should be BLOCKED (user is flagged or banned)."""
-    now = time.monotonic()
-    timestamps = _action_timestamps.setdefault(user_id, [])
-    timestamps.append(now)
-
-    cutoff = now - CHEAT_WINDOW_SECONDS
-    while timestamps and timestamps[0] < cutoff:
-        timestamps.pop(0)
-
-    if len(timestamps) <= CHEAT_MAX_ACTIONS_IN_WINDOW:
-        return False
-
-    # Suspicious pattern detected — clear window so we don't spam-flag repeatedly
-    timestamps.clear()
-    strikes = add_cheat_strike(user_id)
-    log_action(user_id, "CHEAT_FLAG", f"strikes={strikes}")
-
-    if strikes >= CHEAT_STRIKE_LIMIT:
-        with closing(get_conn()) as conn, conn:
-            conn.execute("UPDATE users SET banned = 1 WHERE user_id = ?", (user_id,))
-        log_action(user_id, "AUTO_BAN", "cheat_strikes_exceeded")
-        for admin_id in ADMIN_IDS:
-            try:
-                await context.bot.send_message(
-                    admin_id,
-                    f"🚨 کاربر {user_id} به‌صورت خودکار به دلیل تشخیص فعالیت غیرطبیعی "
-                    f"(اسکریپت/کلیک‌های سریع) و عبور از {CHEAT_STRIKE_LIMIT} اخطار، مسدود شد.",
-                )
-            except Exception:
-                pass
-        return True
 
     for admin_id in ADMIN_IDS:
         try:
             await context.bot.send_message(
                 admin_id,
-                f"⚠️ فعالیت مشکوک از کاربر {user_id} — اخطار {strikes}/{CHEAT_STRIKE_LIMIT}",
+                f"💳 پرداخت استارز جدید\nکاربر: {user_id}\nتعرفه: {tier['title']}\nمدت: {months} ماه\nمبلغ: {stars}⭐",
             )
-        except Exception:
+        except TelegramError:
             pass
 
-    return False
 
-def is_user_banned(user_id: int) -> bool:
-    user = get_user(user_id)
-    return bool(user and user["banned"])
-
-# ---------------------------------------------------------------------------
-# Jobs system (careers) — virtual income boost per job, no real money
-# ---------------------------------------------------------------------------
-
-JOBS = {
-    "miner": {"name": "⛏ معدنچی", "income": 15, "cost": 0},
-    "trader": {"name": "💼 تاجر", "income": 25, "cost": 300},
-    "programmer": {"name": "💻 برنامه‌نویس", "income": 40, "cost": 800},
-    "scientist": {"name": "🔬 دانشمند", "income": 60, "cost": 1500},
-    "investor": {"name": "📈 سرمایه‌گذار", "income": 90, "cost": 3000},
-    "athlete": {"name": "⚽ فوتبالیست", "income": 130, "cost": 6000},
-}
-
-def jobs_keyboard(current_title):
-    rows = []
-    for key, job in JOBS.items():
-        marker = "✅ " if job["name"] == current_title else ""
-        cost_text = f" ({job['cost']:.0f} LIBER)" if job["cost"] > 0 else " (رایگان)"
-        rows.append([InlineKeyboardButton(f"{marker}{job['name']}{cost_text}", callback_data=f"job_set_{key}")])
-    rows.append([InlineKeyboardButton("💼 کار کن (دریافت درآمد روزانه)", callback_data="job_work")])
-    return InlineKeyboardMarkup(rows)
-
-
-async def jobs_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
+# ---------------------------------------------------------------
+#  برداشت TON
+# ---------------------------------------------------------------
+async def withdraw_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    u = get_user(q.from_user.id)
+    if u["liber"] < MIN_WITHDRAW_LIBER:
+        await q.edit_message_text(
+            f"❌ حداقل موجودی برای برداشت {MIN_WITHDRAW_LIBER} LIBER است.\n"
+            f"موجودی فعلی شما: {round(u['liber'], 2)} LIBER",
+            reply_markup=back_keyboard(),
+        )
         return
-    await update.message.reply_text(
-        "💼 شغل‌های موجود — روی هرکدوم بزن تا استخدام بشی:",
-        reply_markup=jobs_keyboard(user["title"]),
+    context.user_data["awaiting"] = "withdraw_amount"
+    await q.edit_message_text(
+        f"📤 برداشت TON\n\nموجودی شما: {round(u['liber'],2)} LIBER\n"
+        f"کارمزد برداشت: {WITHDRAW_FEE_PERCENT}٪\n\n"
+        f"چه مقدار LIBER می‌خواهید برداشت کنید؟ (حداقل {MIN_WITHDRAW_LIBER})",
+        reply_markup=back_keyboard(),
     )
 
 
-async def jobs_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = query.from_user.id
-    data = query.data
-    user = get_user(user_id)
-    await query.answer()
-
-    if not user:
-        return
-
-    if data.startswith("job_set_"):
-        key = data[len("job_set_"):]
-        job = JOBS.get(key)
-        if not job:
-            return
-        if user["liber"] < job["cost"]:
-            await query.answer(f"❌ برای استخدام به {job['cost']:.0f} LIBER نیاز داری.", show_alert=True)
-            return
-        with closing(get_conn()) as conn, conn:
-            conn.execute(
-                "UPDATE users SET liber = liber - ?, title = ? WHERE user_id = ?",
-                (job["cost"], job["name"], user_id),
-            )
-        log_action(user_id, "SET_JOB", key)
-        await query.edit_message_text(
-            f"✅ شغل شما به {job['name']} تغییر کرد!", reply_markup=jobs_keyboard(job["name"])
-        )
-        return
-
-    if data == "job_work":
-        job_entry = next((j for j in JOBS.values() if j["name"] == user["title"]), None)
-        if not job_entry:
-            await query.answer("هنوز شغلی انتخاب نکردی!", show_alert=True)
-            return
-
-        now = datetime.utcnow()
-        with closing(get_conn()) as conn:
-            last_work = conn.execute(
-                "SELECT created_at FROM logs WHERE user_id = ? AND action = 'WORK' ORDER BY log_id DESC LIMIT 1",
-                (user_id,),
-            ).fetchone()
-
-        if last_work:
-            last_time = datetime.fromisoformat(last_work["created_at"])
-            if now - last_time < timedelta(hours=20):
-                remaining = timedelta(hours=20) - (now - last_time)
-                hrs = int(remaining.total_seconds() // 3600)
-                await query.answer(f"⏳ {hrs} ساعت دیگر دوباره کار کن.", show_alert=True)
-                return
-
-        income = max(1, job_entry["income"] + random.randint(-3, 10))
-        add_currency(user_id, liber=income)
-        add_xp(user_id, 8)
-        log_action(user_id, "WORK", f"income={income}")
-        await query.answer(f"💼 +{income} LIBER, +8 XP", show_alert=True)
-        await query.edit_message_text(
-            f"💼 یک روز کاری به‌عنوان {user['title']} تموم شد!\n+{income} LIBER, +8 XP",
-            reply_markup=jobs_keyboard(user["title"]),
-        )
-
-
-async def set_job(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Command fallback (button flow via 💼 شغل is the main path)."""
+async def _do_withdraw_amount(update, context, amount):
     user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
+    u = get_user(user_id)
+    if amount < MIN_WITHDRAW_LIBER:
+        await update.message.reply_text(f"❌ حداقل مقدار برداشت {MIN_WITHDRAW_LIBER} LIBER است.")
         return
-    if not context.args or context.args[0] not in JOBS:
-        await update.message.reply_text("از دکمه‌ی 💼 شغل استفاده کن، یا: /setjob نوع")
-        return
-    key = context.args[0]
-    job = JOBS[key]
-    if user["liber"] < job["cost"]:
-        await update.message.reply_text(f"برای استخدام به {job['cost']} LIBER نیاز داری.")
-        return
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            "UPDATE users SET liber = liber - ?, title = ? WHERE user_id = ?",
-            (job["cost"], job["name"], user_id),
-        )
-    log_action(user_id, "SET_JOB", key)
-    await update.message.reply_text(f"✅ شغل شما به {job['name']} تغییر کرد!")
-
-
-async def work(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Command fallback (button flow via 💼 شغل is the main path)."""
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
+    if u["liber"] < amount:
+        await update.message.reply_text("❌ موجودی کافی نیست.")
         return
 
-    job_entry = next((j for j in JOBS.values() if j["name"] == user["title"]), None)
-    if not job_entry:
-        await update.message.reply_text("هنوز شغلی انتخاب نکردی. از دکمه‌ی 💼 شغل یکی رو انتخاب کن.")
-        return
+    context.user_data["withdraw_amount"] = amount
+    context.user_data["awaiting"] = "withdraw_address"
+    await update.message.reply_text("لطفاً آدرس ولت TonKeeper خود را وارد کنید:")
+
+
+async def _do_withdraw_address(update, context, address):
+    context.user_data["withdraw_address"] = address
+    context.user_data["awaiting"] = None
+    amount = context.user_data.get("withdraw_amount", 0)
+    fee = round(amount * WITHDRAW_FEE_PERCENT / 100, 2)
+    net = round(amount - fee, 2)
+    # نرخ نمادین تبدیل LIBER به TON؛ در صورت نیاز از منبع قیمت واقعی استفاده شود
+    ton_amount = round(net / MARKET_BASE_PRICE, 4)
 
-    now = datetime.utcnow()
-    with closing(get_conn()) as conn:
-        last_work = conn.execute(
-            "SELECT detail, created_at FROM logs WHERE user_id = ? AND action = 'WORK' ORDER BY log_id DESC LIMIT 1",
-            (user_id,),
-        ).fetchone()
-
-    if last_work:
-        last_time = datetime.fromisoformat(last_work["created_at"])
-        if now - last_time < timedelta(hours=20):
-            remaining = timedelta(hours=20) - (now - last_time)
-            hrs = int(remaining.total_seconds() // 3600)
-            await update.message.reply_text(f"⏳ {hrs} ساعت دیگر دوباره کار کن.")
-            return
-
-    income = job_entry["income"] + random.randint(-3, 10)
-    add_currency(user_id, liber=max(1, income))
-    add_xp(user_id, 8)
-    log_action(user_id, "WORK", f"income={income}")
-    await update.message.reply_text(
-        f"💼 یک روز کاری به‌عنوان {user['title']} تموم شد!\n+{max(1, income)} LIBER, +8 XP"
-    )
-
-# ---------------------------------------------------------------------------
-# Clan system (upgraded alliance with wars and levels)
-# ---------------------------------------------------------------------------
-
-CLAN_UPGRADE_COST_BASE = 500
-
-async def clan_war_simulate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Fun mock clan-war: pits your alliance's treasury against a random rival score."""
-    user_id = update.effective_user.id
-
-    with closing(get_conn()) as conn:
-        membership = conn.execute(
-            "SELECT * FROM alliance_members WHERE user_id = ?", (user_id,)
-        ).fetchone()
-
-    if not membership:
-        await update.message.reply_text("ابتدا باید عضو یک اتحاد/کلن باشی.")
-        return
-
-    with closing(get_conn()) as conn:
-        alliance = conn.execute(
-            "SELECT * FROM alliances WHERE alliance_id = ?", (membership["alliance_id"],)
-        ).fetchone()
-
-    our_power = alliance["treasury"] + random.randint(0, 200)
-    rival_power = random.randint(100, 1500)
-
-    won = our_power >= rival_power
-
-    if won:
-        reward = random.randint(100, 400)
-        with closing(get_conn()) as conn, conn:
-            conn.execute(
-                "UPDATE alliances SET treasury = treasury + ? WHERE alliance_id = ?",
-                (reward, alliance["alliance_id"]),
-            )
-        text = (
-            f"⚔️ جنگ کلن!\nقدرت شما: {our_power} — قدرت حریف: {rival_power}\n"
-            f"🏆 بردید! +{reward} به خزانه کلن اضافه شد."
-        )
-    else:
-        text = f"⚔️ جنگ کلن!\nقدرت شما: {our_power} — قدرت حریف: {rival_power}\n😔 این بار باختید."
-
-    add_season_points(user_id, 30 if won else 5)
-    await update.message.reply_text(text)
-
-# ---------------------------------------------------------------------------
-# Research / Technology tree
-# ---------------------------------------------------------------------------
-
-RESEARCH_TREE = [
-    {"name": "کشاورزی مدرن", "cost": 300, "effect": "تولید +10%"},
-    {"name": "معدن‌کاری پیشرفته", "cost": 700, "effect": "تولید +20%"},
-    {"name": "انرژی خورشیدی", "cost": 1500, "effect": "تولید +35%"},
-    {"name": "هوش مصنوعی صنعتی", "cost": 3000, "effect": "تولید +50%"},
-    {"name": "فناوری کوانتومی", "cost": 6000, "effect": "تولید +75%"},
-]
-
-async def research_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    level = user["research_level"]
-    if level >= len(RESEARCH_TREE):
-        await update.message.reply_text("🔬 تمام سطوح تحقیقاتی رو کامل کردی! 🎉")
-        return
-
-    info = RESEARCH_TREE[level]
-    await update.message.reply_text(
-        f"🔬 تحقیقات\n\nسطح فعلی: {level}\nتحقیق بعدی: {info['name']}\n"
-        f"هزینه: {info['cost']} LIBER\nاثر: {info['effect']}\n\nبرای ارتقا: /research_upgrade"
-    )
-
-async def research_upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    level = user["research_level"]
-    if level >= len(RESEARCH_TREE):
-        await update.message.reply_text("🔬 تمام سطوح تحقیقاتی رو کامل کردی!")
-        return
-
-    info = RESEARCH_TREE[level]
-    if user["liber"] < info["cost"]:
-        await update.message.reply_text(f"❌ LIBER کافی نیست. هزینه: {info['cost']}")
-        return
-
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            "UPDATE users SET liber = liber - ?, research_level = research_level + 1 WHERE user_id = ?",
-            (info["cost"], user_id),
-        )
-
-    add_xp(user_id, 20)
-    log_action(user_id, "RESEARCH", info["name"])
-    await update.message.reply_text(f"🔬 تحقیق «{info['name']}» تکمیل شد! ({info['effect']})")
-
-# ---------------------------------------------------------------------------
-# Defense upgrades
-# ---------------------------------------------------------------------------
-
-DEFENSE_BASE_COST = 250
-DEFENSE_GROWTH = 1.6
-
-async def defense_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    cost = round(DEFENSE_BASE_COST * (DEFENSE_GROWTH ** user["defense_level"]), 2)
-    await update.message.reply_text(
-        f"🛡 دفاع\n\nسطح فعلی: {user['defense_level']}\nهزینه ارتقای بعدی: {cost} LIBER\n\n"
-        "برای ارتقا: /defense_upgrade"
-    )
-
-async def defense_upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    cost = round(DEFENSE_BASE_COST * (DEFENSE_GROWTH ** user["defense_level"]), 2)
-    if user["liber"] < cost:
-        await update.message.reply_text(f"❌ LIBER کافی نیست. هزینه: {cost}")
-        return
-
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            "UPDATE users SET liber = liber - ?, defense_level = defense_level + 1 WHERE user_id = ?",
-            (cost, user_id),
-        )
-
-    log_action(user_id, "DEFENSE_UPGRADE", "")
-    await update.message.reply_text(f"🛡 دفاعت به سطح {user['defense_level']+1} ارتقا یافت! (-{cost} LIBER)")
-
-# ---------------------------------------------------------------------------
-# Exploration
-# ---------------------------------------------------------------------------
-
-EXPLORATION_MIN_LEVEL = 5
-EXPLORATION_ENERGY_COST = 20
-EXPLORATION_REWARDS = [("liber", 20, 150), ("energy", -20, 0)]
-
-async def exploration(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    if user["level"] < EXPLORATION_MIN_LEVEL:
-        await update.message.reply_text(f"🌌 اکتشاف فقط برای سطح {EXPLORATION_MIN_LEVEL} به بالا باز است.")
-        return
-    if user["energy"] < EXPLORATION_ENERGY_COST:
-        await update.message.reply_text("⚡ انرژی کافی نداری.")
-        return
-
-    reward_liber = random.randint(20, 150)
-    reward_diamond_chance = random.random() < 0.15
-
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            "UPDATE users SET energy = energy - ?, liber = liber + ? WHERE user_id = ?",
-            (EXPLORATION_ENERGY_COST, reward_liber, user_id),
-        )
-
-    add_xp(user_id, 15)
-    text = f"🌌 اکتشاف موفق!\n+{reward_liber} LIBER\n-{EXPLORATION_ENERGY_COST} Energy"
-    if reward_diamond_chance:
-        text += "\n💎 یک آیتم کمیاب هم پیدا کردی!"
-    await update.message.reply_text(text)
-
-# ---------------------------------------------------------------------------
-# Gift Codes (virtual rewards only)
-# ---------------------------------------------------------------------------
-
-async def redeem_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-    if not context.args:
-        await update.message.reply_text("استفاده: /gift کد_هدیه")
-        return
-
-    code = context.args[0].strip().upper()
-
-    with closing(get_conn()) as conn:
-        gift = conn.execute("SELECT * FROM gift_codes WHERE code = ?", (code,)).fetchone()
-
-    if not gift:
-        await update.message.reply_text("❌ این کد هدیه معتبر نیست.")
-        return
-    if gift["used_count"] >= gift["max_uses"]:
-        await update.message.reply_text("❌ ظرفیت این کد تمام شده.")
-        return
-
-    with closing(get_conn()) as conn:
-        already = conn.execute(
-            "SELECT 1 FROM gift_redemptions WHERE code = ? AND user_id = ?", (code, user_id)
-        ).fetchone()
-    if already:
-        await update.message.reply_text("❌ قبلاً این کد رو استفاده کردی.")
-        return
-
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            "INSERT INTO gift_redemptions (code, user_id, redeemed_at) VALUES (?, ?, ?)",
-            (code, user_id, datetime.utcnow().isoformat()),
-        )
-        conn.execute("UPDATE gift_codes SET used_count = used_count + 1 WHERE code = ?", (code,))
-
-    add_currency(user_id, liber=gift["reward_liber"])
-    await update.message.reply_text(f"🎉 کد فعال شد! +{gift['reward_liber']} LIBER گرفتی.")
-
-async def create_gift_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_admin(user_id):
-        return
-    if len(context.args) < 3:
-        await update.message.reply_text("استفاده: /creategift کد مقدار_LIBER تعداد_استفاده")
-        return
-
-    code = context.args[0].strip().upper()
-    try:
-        reward = float(context.args[1])
-        max_uses = int(context.args[2])
-    except ValueError:
-        await update.message.reply_text("مقادیر نامعتبر.")
-        return
-
-    try:
-        with closing(get_conn()) as conn, conn:
-            conn.execute(
-                "INSERT INTO gift_codes (code, reward_liber, max_uses, created_at) VALUES (?, ?, ?, ?)",
-                (code, reward, max_uses, datetime.utcnow().isoformat()),
-            )
-    except sqlite3.IntegrityError:
-        await update.message.reply_text("این کد قبلاً وجود داره.")
-        return
-
-    await update.message.reply_text(f"✅ کد هدیه «{code}» ساخته شد: {reward} LIBER × {max_uses} استفاده")
-
-# ---------------------------------------------------------------------------
-# Prediction market (virtual bets on the internal market price)
-# ---------------------------------------------------------------------------
-
-PREDICTION_BET = 30
-PREDICTION_MULTIPLIER = 1.8
-
-async def predict_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    price = get_market_price()
-    await update.message.reply_text(
-        f"🎟 پیش‌بینی قیمت LIBER\n\nقیمت فعلی: {price:.4f}\nمبلغ شرط: {PREDICTION_BET} Coin\n"
-        f"ضریب برد: {PREDICTION_MULTIPLIER}x\n\n/predict_up یا /predict_down"
-    )
-
-async def place_prediction(update: Update, context: ContextTypes.DEFAULT_TYPE, direction: str):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-    if user["coin"] < PREDICTION_BET:
-        await update.message.reply_text("Coin کافی نداری.")
-        return
-
-    price = get_market_price()
-    with closing(get_conn()) as conn, conn:
-        conn.execute(
-            "UPDATE users SET coin = coin - ? WHERE user_id = ?", (PREDICTION_BET, user_id)
-        )
-        conn.execute(
-            """INSERT INTO predictions (user_id, direction, start_price, bet_amount, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (user_id, direction, price, PREDICTION_BET, datetime.utcnow().isoformat()),
-        )
-    await update.message.reply_text(f"🎟 شرط ثبت شد: پیش‌بینی {direction} روی قیمت {price:.4f}")
-
-async def predict_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await place_prediction(update, context, "up")
-
-async def predict_down(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await place_prediction(update, context, "down")
-
-def resolve_predictions():
-    new_price = get_market_price()
-    with closing(get_conn()) as conn, conn:
-        open_bets = conn.execute("SELECT * FROM predictions WHERE status = 'open'").fetchall()
-        results = []
-        for bet in open_bets:
-            won = (bet["direction"] == "up" and new_price > bet["start_price"]) or (
-                bet["direction"] == "down" and new_price < bet["start_price"]
-            )
-            if won:
-                payout = bet["bet_amount"] * PREDICTION_MULTIPLIER
-                conn.execute(
-                    "UPDATE users SET coin = coin + ? WHERE user_id = ?", (payout, bet["user_id"])
-                )
-                results.append((bet["user_id"], True, payout))
-            else:
-                results.append((bet["user_id"], False, 0))
-            conn.execute("UPDATE predictions SET status = 'closed' WHERE pred_id = ?", (bet["pred_id"],))
-    return results
-
-async def prediction_resolve_job(context: ContextTypes.DEFAULT_TYPE):
-    results = resolve_predictions()
-    for user_id, won, payout in results:
-        try:
-            if won:
-                await context.bot.send_message(user_id, f"🎉 پیش‌بینی‌ات درست بود! +{payout:.2f} Coin")
-            else:
-                await context.bot.send_message(user_id, "😔 پیش‌بینی‌ات این‌بار درست نبود.")
-        except Exception:
-            pass
-
-# ---------------------------------------------------------------------------
-# Smart Advisor (personalized virtual-economy tips)
-# ---------------------------------------------------------------------------
-
-async def smart_advisor(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    tips = []
-    price = get_market_price()
-
-    if price < 8:
-        tips.append("📉 قیمت LIBER پایین‌تر از حد معموله — الان زمان خوبی برای خریدنه.")
-    elif price > 15:
-        tips.append("📈 قیمت LIBER بالاست — شاید بخوای بفروشی و سود کنی.")
-
-    country = get_country_by_owner(user_id)
-    if not country:
-        tips.append("🌍 هنوز کشوری نساختی! رایگانه و بهت جمعیت اولیه می‌ده.")
-
-    if user["research_level"] < len(RESEARCH_TREE):
-        info = RESEARCH_TREE[user["research_level"]]
-        if user["liber"] >= info["cost"]:
-            tips.append(f"🔬 می‌تونی همین الان «{info['name']}» رو با {info['cost']} LIBER تحقیق کنی.")
-
-    if user["defense_level"] < 3:
-        tips.append("🛡 دفاعت پایینه؛ ارتقاش بده تا امن‌تر بشی.")
-
-    today = datetime.utcnow().date().isoformat()
-    if not user["last_daily"] or user["last_daily"][:10] != today:
-        tips.append("🎁 جایزه روزانه‌ات رو هنوز نگرفتی!")
-
-    if not tips:
-        tips.append("👍 وضعیتت خیلی خوبه! همینطور با مأموریت و بازار پیش برو.")
-
-    text = "🤖 مشاور هوشمند LIBER\n\n" + "\n\n".join(f"• {t}" for t in tips)
-    await update.message.reply_text(text)
-
-# ---------------------------------------------------------------------------
-# World News feed (live snapshot of the in-game economy)
-# ---------------------------------------------------------------------------
-
-async def world_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    price = get_market_price()
-    season = get_active_season()
-
-    with closing(get_conn()) as conn:
-        richest = conn.execute(
-            "SELECT first_name, liber FROM users ORDER BY liber DESC LIMIT 1"
-        ).fetchone()
-        total_users = conn.execute("SELECT COUNT(*) as c FROM users").fetchone()["c"]
-        total_countries = conn.execute("SELECT COUNT(*) as c FROM countries").fetchone()["c"]
-
-    lines = [
-        f"💹 قیمت لحظه‌ای LIBER: {price:.4f}",
-        f"📆 {season['name']} در حال اجراست.",
-        f"👥 کل بازیکنان: {total_users}",
-        f"🌍 کشورهای ساخته‌شده: {total_countries}",
-    ]
-    if richest:
-        lines.append(f"👑 ثروتمندترین بازیکن: {richest['first_name']} با {richest['liber']:.0f} LIBER")
-
-    await update.message.reply_text("📰 اخبار جهان LIBER\n\n" + "\n".join(lines))
-
-# ---------------------------------------------------------------------------
-# Online Competition — Football / Basketball (fully virtual, button-driven)
-# ---------------------------------------------------------------------------
-
-SPORTS = {
-    "football": {
-        "title": "⚽ فوتبال",
-        "stats": {"speed": "⚡ سرعت", "accuracy": "🎯 دقت", "shot": "🥅 شوت", "technique": "🌀 تکنیک"},
-        "max_level": 15,
-    },
-    "basketball": {
-        "title": "🏀 بسکتبال",
-        "stats": {"jump": "🤾 پرش", "power": "💪 قدرت", "body": "🏋 بدنی", "accuracy": "🎯 دقت"},
-        "max_level": 20,
-    },
-}
-
-STAT_UPGRADE_BASE_COST = 10
-STAT_UPGRADE_GROWTH = 1.55  # each level costs ~55% more than the last
-
-MATCH_TIERS = {
-    "normal": {"name": "🎮 مسابقه عادی", "entry": 15, "reward_multiplier": 2.0},
-    "hard": {"name": "🔥 مسابقه سخت", "entry": 30, "reward": 55},
-    "elite": {"name": "👑 مسابقه نخبگان", "entry": 1000, "reward": 2000},
-}
-
-RANK_TIERS = [
-    (0, "🥉 برنز"), (100, "🥈 نقره"), (300, "🥇 طلا"), (700, "💠 پلاتینیوم"),
-    (1500, "🐉 دراگون"), (3000, "🐲 دراگون لجند"), (6000, "👑 لیبر فول لجند"),
-]
-
-TOURNAMENT_LENGTH_DAYS = 60
-TOURNAMENT_REWARDS = {1: 1000, 2: 800, 3: 600}
-
-
-def get_stat_cost(level: int) -> int:
-    return int(STAT_UPGRADE_BASE_COST * (STAT_UPGRADE_GROWTH ** level))
-
-
-def get_total_power(user, sport: str) -> int:
-    stats = SPORTS[sport]["stats"].keys()
-    return sum(user[f"{sport}_{s}"] for s in stats)
-
-
-def get_rank_name(points: int) -> str:
-    name = RANK_TIERS[0][1]
-    for threshold, tier_name in RANK_TIERS:
-        if points >= threshold:
-            name = tier_name
-    return name
-
-
-def sport_choice_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚽ فوتبال", callback_data="comp_choose_football"),
-         InlineKeyboardButton("🏀 بسکتبال", callback_data="comp_choose_basketball")],
-    ])
-
-
-def sport_panel_keyboard(sport: str, user):
-    rows = []
-    stat_buttons = []
-    for stat_key, label in SPORTS[sport]["stats"].items():
-        level = user[f"{sport}_{stat_key}"]
-        stat_buttons.append(InlineKeyboardButton(f"⬆️ {label} (Lv{level})", callback_data=f"comp_up_{sport}_{stat_key}"))
-    for i in range(0, len(stat_buttons), 2):
-        rows.append(stat_buttons[i:i + 2])
-
-    rows.append([InlineKeyboardButton(f"{MATCH_TIERS['normal']['name']} (-{MATCH_TIERS['normal']['entry']} LIBER)",
-                                       callback_data=f"comp_play_{sport}_normal")])
-    rows.append([InlineKeyboardButton(f"{MATCH_TIERS['hard']['name']} (-{MATCH_TIERS['hard']['entry']} LIBER)",
-                                       callback_data=f"comp_play_{sport}_hard")])
-    rows.append([InlineKeyboardButton(f"{MATCH_TIERS['elite']['name']} (-{MATCH_TIERS['elite']['entry']} LIBER)",
-                                       callback_data=f"comp_play_{sport}_elite")])
-    rows.append([InlineKeyboardButton("🏆 رتبه‌بندی رقابتی", callback_data="comp_leaderboard"),
-                 InlineKeyboardButton("🔙 تغییر ورزش", callback_data="comp_back")])
-    return InlineKeyboardMarkup(rows)
-
-
-async def competition_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    if not user:
-        await update.message.reply_text("ابتدا با /start ثبت‌نام کن.")
-        return
-
-    if not user["sport"]:
-        await update.message.reply_text(
-            "⚔️ رقابت آنلاین\n\nاول یک ورزش انتخاب کن:", reply_markup=sport_choice_keyboard()
-        )
-        return
-
-    rank = get_rank_name(user["rank_points"])
     text = (
-        f"⚔️ رقابت آنلاین — {SPORTS[user['sport']]['title']}\n\n"
-        f"🏆 رنک فعلی: {rank} ({user['rank_points']} امتیاز)\n"
-        f"🎮 بازی‌ها: {user['matches_played']} | 🏅 برد: {user['matches_won']}\n\n"
-        "مهارت‌هات رو ارتقا بده یا وارد یه مسابقه شو:"
+        f"لطفاً بررسی و تایید کنید:\n\n"
+        f"مقدار برداشت: {amount} LIBER\n"
+        f"کارمزد: {fee} LIBER\n"
+        f"خالص: {net} LIBER  (≈ {ton_amount} TON)\n"
+        f"آدرس مقصد: {address}\n"
     )
-    await update.message.reply_text(text, reply_markup=sport_panel_keyboard(user["sport"], user))
+    await update.message.reply_text(text, reply_markup=withdraw_confirm_keyboard())
 
 
-def _simulate_match(power: int) -> tuple:
-    """Compares player power against a randomized AI opponent. Returns (player_score, opp_score, won)."""
-    opponent_power = max(5, power + random.randint(-8, 12))
-    player_score = 0
-    opp_score = 0
-    for _ in range(5):  # 5 possessions
-        p_roll = power + random.randint(-10, 10)
-        o_roll = opponent_power + random.randint(-10, 10)
-        if p_roll > o_roll:
-            player_score += 1
-        elif o_roll > p_roll:
-            opp_score += 1
-    if player_score == opp_score:  # penalty shootout tiebreaker
-        if power + random.randint(0, 15) >= opponent_power + random.randint(0, 15):
-            player_score += 1
-        else:
-            opp_score += 1
-    return player_score, opp_score, player_score > opp_score
-
-
-async def competition_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = query.from_user.id
-    user = get_user(user_id)
-    data = query.data
-    await query.answer()
-
-    if not user:
+async def withdraw_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    user_id = q.from_user.id
+    amount = context.user_data.get("withdraw_amount")
+    address = context.user_data.get("withdraw_address")
+    if not amount or not address:
+        await q.edit_message_text("درخواست منقضی شده، دوباره تلاش کنید.", reply_markup=back_keyboard())
         return
 
-    if data == "comp_back":
-        await query.edit_message_text("⚔️ اول یک ورزش انتخاب کن:", reply_markup=sport_choice_keyboard())
-        return
+    fee = round(amount * WITHDRAW_FEE_PERCENT / 100, 2)
+    net = round(amount - fee, 2)
+    ton_amount = round(net / MARKET_BASE_PRICE, 4)
 
-    if data.startswith("comp_choose_"):
-        sport = data[len("comp_choose_"):]
-        with closing(get_conn()) as conn, conn:
-            conn.execute("UPDATE users SET sport = ? WHERE user_id = ?", (sport, user_id))
-        user = get_user(user_id)
-        rank = get_rank_name(user["rank_points"])
-        text = (
-            f"✅ ورزش انتخابی: {SPORTS[sport]['title']}\n\n"
-            f"🏆 رنک: {rank} ({user['rank_points']} امتیاز)\n\nمهارت‌هات رو ارتقا بده یا بازی کن:"
-        )
-        await query.edit_message_text(text, reply_markup=sport_panel_keyboard(sport, user))
-        return
+    request_id = create_withdraw_request(user_id, amount, fee, ton_amount, address)
+    context.user_data["withdraw_amount"] = None
+    context.user_data["withdraw_address"] = None
 
-    if data.startswith("comp_up_"):
-        _, _, sport, stat_key = data.split("_")
-        level = user[f"{sport}_{stat_key}"]
-        max_level = SPORTS[sport]["max_level"]
-        if level >= max_level:
-            await query.answer("این مهارت به حداکثر سطح رسیده!", show_alert=True)
-            return
-        cost = get_stat_cost(level)
-        if user["liber"] < cost:
-            await query.answer(f"❌ برای ارتقا به {cost} LIBER نیاز داری.", show_alert=True)
-            return
-        with closing(get_conn()) as conn, conn:
-            conn.execute(
-                f"UPDATE users SET liber = liber - ?, {sport}_{stat_key} = {sport}_{stat_key} + 1 WHERE user_id = ?",
-                (cost, user_id),
-            )
-        log_action(user_id, "STAT_UPGRADE", f"{sport}_{stat_key}")
-        user = get_user(user_id)
-        await query.edit_message_text(
-            f"✅ مهارت ارتقا یافت! (هزینه: {cost} LIBER)\n\nپنل {SPORTS[sport]['title']}:",
-            reply_markup=sport_panel_keyboard(sport, user),
-        )
-        return
+    await q.edit_message_text(WITHDRAW_PENDING_TEXT, reply_markup=back_keyboard())
 
-    if data.startswith("comp_play_"):
-        _, _, sport, tier_key = data.split("_")
-        tier = MATCH_TIERS[tier_key]
-        if user["liber"] < tier["entry"]:
-            await query.answer(f"❌ برای این مسابقه به {tier['entry']} LIBER نیاز داری.", show_alert=True)
-            return
-
-        power = get_total_power(user, sport)
-        p_score, o_score, won = _simulate_match(power)
-
-        with closing(get_conn()) as conn, conn:
-            conn.execute("UPDATE users SET liber = liber - ? WHERE user_id = ?", (tier["entry"], user_id))
-            conn.execute(
-                "INSERT INTO matches (player_id, sport, tier, player_score, opponent_score, result, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (user_id, sport, tier_key, p_score, o_score, "win" if won else "loss", datetime.utcnow().isoformat()),
-            )
-            conn.execute("UPDATE users SET matches_played = matches_played + 1 WHERE user_id = ?", (user_id,))
-
-        if won:
-            if tier_key == "normal":
-                reward = tier["entry"] * tier["reward_multiplier"]
-            else:
-                reward = tier["reward"]
-            rank_gain = 15 if tier_key == "normal" else (30 if tier_key == "hard" else 80)
-            add_currency(user_id, liber=reward)
-            with closing(get_conn()) as conn, conn:
-                conn.execute(
-                    "UPDATE users SET matches_won = matches_won + 1, rank_points = rank_points + ? WHERE user_id = ?",
-                    (rank_gain, user_id),
-                )
-            result_text = f"🏆 بردی! نتیجه {p_score}-{o_score}\n+{reward:.0f} LIBER, +{rank_gain} امتیاز رنک"
-        else:
-            with closing(get_conn()) as conn, conn:
-                conn.execute(
-                    "UPDATE users SET rank_points = MAX(0, rank_points - 5) WHERE user_id = ?", (user_id,)
-                )
-            result_text = f"😔 باختی. نتیجه {p_score}-{o_score}\n-{tier['entry']:.0f} LIBER, -5 امتیاز رنک"
-
-        log_action(user_id, "MATCH_PLAYED", f"{sport}/{tier_key} {'WIN' if won else 'LOSS'}")
-        user = get_user(user_id)
-        await query.edit_message_text(
-            f"{tier['name']} — {SPORTS[sport]['title']}\n\n{result_text}",
-            reply_markup=sport_panel_keyboard(sport, user),
-        )
-        return
-
-    if data == "comp_leaderboard":
-        with closing(get_conn()) as conn:
-            rows = conn.execute(
-                "SELECT first_name, rank_points, matches_won, matches_played FROM users "
-                "ORDER BY rank_points DESC LIMIT 10"
-            ).fetchall()
-        text = "🏆 برترین‌های رقابت آنلاین\n\n"
-        for i, r in enumerate(rows, start=1):
-            text += f"{i}. {r['first_name']} — {get_rank_name(r['rank_points'])} ({r['rank_points']}) — {r['matches_won']}/{r['matches_played']} برد\n"
-        await query.edit_message_text(text or "هنوز کسی بازی نکرده.", reply_markup=sport_choice_keyboard())
-
-
-def get_tournament_days_left() -> int:
-    with closing(get_conn()) as conn:
-        row = conn.execute("SELECT started_at FROM tournament WHERE id = 1").fetchone()
-    started = datetime.fromisoformat(row["started_at"])
-    passed = (datetime.utcnow() - started).days
-    return max(0, TOURNAMENT_LENGTH_DAYS - passed)
-
-
-async def tournament_job(context: ContextTypes.DEFAULT_TYPE):
-    """Runs bi-monthly: pays out top-3 rank_points, resets the ladder, notifies winners."""
-    if get_tournament_days_left() > 0:
-        return
-
-    with closing(get_conn()) as conn:
-        top3 = conn.execute(
-            "SELECT user_id, first_name, rank_points FROM users ORDER BY rank_points DESC LIMIT 3"
-        ).fetchall()
-
-    for i, row in enumerate(top3, start=1):
-        if row["rank_points"] <= 0:
-            continue
-        reward = TOURNAMENT_REWARDS.get(i, 0)
-        add_currency(row["user_id"], liber=reward)
+    for admin_id in ADMIN_IDS:
         try:
             await context.bot.send_message(
-                row["user_id"],
-                f"🏆 تبریک! در تورنمت رقابتی این دوره رتبه {i} شدی و {reward} LIBER جایزه گرفتی!",
+                admin_id,
+                f"📥 درخواست برداشت جدید #{request_id}\n"
+                f"کاربر: {user_id}\n"
+                f"مقدار: {amount} LIBER (خالص {net})\n"
+                f"معادل: {ton_amount} TON\n"
+                f"آدرس: {address}",
+                reply_markup=admin_withdraw_review_keyboard(request_id),
             )
-        except Exception:
+        except TelegramError:
             pass
 
-    with closing(get_conn()) as conn, conn:
-        conn.execute("UPDATE tournament SET started_at = ? WHERE id = 1", (datetime.utcnow().isoformat(),))
-        conn.execute("UPDATE users SET rank_points = 0")
 
-    logger.info("Tournament resolved and ladder reset.")
+# ---------------------------------------------------------------
+#  راهنما
+# ---------------------------------------------------------------
+async def help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    text = (
+        "❓ راهنمای ربات LIBER\n\n"
+        "• همه‌ی عملیات از طریق دکمه‌های شیشه‌ای انجام می‌شود.\n"
+        "• LIBER ارز اصلی داخل ربات است که با سکه در بازار معامله می‌شود.\n"
+        "• با دعوت دوستان، انجام ماموریت روزانه و باز کردن صندوق‌ها LIBER جمع کنید.\n"
+        "🔒 ماموریت روزانه اجباری است: تا انجامش ندید، نه صندوق رایگان باز می‌شه نه می‌تونید وارد رقابت آنلاین بشید.\n"
+        f"• حداقل برداشت {MIN_WITHDRAW_LIBER} LIBER است.\n"
+        "• اشتراک ویژه با استارز تلگرام قابل خرید است و مزایای اقتصادی می‌دهد."
+    )
+    await q.edit_message_text(text, reply_markup=back_keyboard())
 
-# ---------------------------------------------------------------------------
-# Message router for reply-keyboard buttons
-# ---------------------------------------------------------------------------
 
-async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ---------------------------------------------------------------
+#  دریافت پیام‌های متنی (پاسخ به مراحل چندقسمتی)
+# ---------------------------------------------------------------
+async def text_message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
-    if is_user_banned(user_id):
-        await update.message.reply_text("🚫 حساب شما مسدود شده است.")
+    if is_banned(user_id):
         return
 
-    if await check_smart_anticheat(user_id, context):
-        await update.message.reply_text("🚫 حساب شما به دلیل فعالیت غیرطبیعی مسدود شد.")
+    if await spam_guard(user_id, update):
         return
 
-    text = update.message.text
+    # ابتدا بررسی می‌کنیم آیا این پیام مربوط به مرحله‌ی ادمین (broadcast/ban) است
+    if await admin_text_router(update, context):
+        return
 
-    routes = {
-        "👤 پروفایل": profile,
-        "💰 کیف پول": wallet,
-        "💹 بازار LIBER": market_view,
-        "🏆 رتبه‌بندی": leaderboard,
-        "👥 دعوت دوستان": invite,
-        "🌍 کشور": country_view,
-        "🏦 بانک": bank_claim,
-        "🏪 فروشگاه": shop_view,
-        "🎁 صندوق‌ها": chest_menu,
-        "🎯 مأموریت‌ها": get_missions,
-        "🎖 دستاوردها": achievements_view,
-        "🤝 اتحاد": alliance_view,
-        "🎮 بازی‌ها": games_menu,
-        "🏷 مزایده": auction_view,
-        "❓ راهنما": help_command,
-        "⚙ تنظیمات": settings_view,
-        "💼 شغل": jobs_view,
-        "⚔️ جنگ کلن": clan_war_simulate,
-        "🔬 تحقیقات": research_view,
-        "🛡 دفاع": defense_view,
-        "🌌 اکتشاف": exploration,
-        "🤖 مشاور هوشمند": smart_advisor,
-        "📰 اخبار جهان": world_news,
-        "🎟 پیش‌بینی قیمت": predict_view,
-        "⚔️ رقابت آنلاین": competition_view,
-    }
+    awaiting = context.user_data.get("awaiting")
+    raw_text = update.message.text.strip()
 
-    handler = routes.get(text)
-    if handler:
-        await handler(update, context)
+    if awaiting in ("market_buy_amount", "market_sell_amount", "bank_deposit_amount", "withdraw_amount"):
+        try:
+            amount = float(raw_text)
+            if amount <= 0:
+                raise ValueError
+        except ValueError:
+            await update.message.reply_text("لطفاً یک عدد معتبر و مثبت وارد کنید.")
+            return
+
+        context.user_data["awaiting"] = None
+        if awaiting == "market_buy_amount":
+            await _do_market_buy(update, context, amount)
+        elif awaiting == "market_sell_amount":
+            await _do_market_sell(update, context, amount)
+        elif awaiting == "bank_deposit_amount":
+            await _do_bank_deposit(update, context, amount)
+        elif awaiting == "withdraw_amount":
+            await _do_withdraw_amount(update, context, amount)
+        return
+
+    if awaiting == "withdraw_address":
+        await _do_withdraw_address(update, context, raw_text)
+        return
+
+    # اگر منتظر ورودی خاصی نبودیم، منوی اصلی را نشان بده
+    await send_main_menu(update, context)
+
+
+# ---------------------------------------------------------------
+#  دیسپچر اصلی کال‌بک‌ها
+# ---------------------------------------------------------------
+SIMPLE_CALLBACKS = {
+    "main_menu": send_main_menu,
+    "menu_profile": profile_callback,
+    "menu_market": market_callback,
+    "market_buy": market_buy_callback,
+    "market_sell": market_sell_callback,
+    "menu_bank": bank_callback,
+    "bank_deposit": bank_deposit_callback,
+    "bank_withdraw": bank_withdraw_callback,
+    "menu_chests": chests_callback,
+    "menu_subscription": subscription_menu_callback,
+    "menu_referral": referral_callback,
+    "withdraw_start": withdraw_start_callback,
+    "withdraw_confirm": withdraw_confirm_callback,
+    "daily_mission": daily_mission_callback,
+    "menu_help": help_callback,
+    "check_join": check_join_callback,
+}
+
+
+async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    user_id = q.from_user.id
+
+    if is_banned(user_id):
+        await q.answer("🚫 حساب شما مسدود است.", show_alert=True)
+        return
+
+    if await spam_guard(user_id, update):
+        return
+
+    data = q.data
+
+    if data in SIMPLE_CALLBACKS:
+        await SIMPLE_CALLBACKS[data](update, context)
+        return
+
+    if data.startswith("chest_open:"):
+        await chest_open_callback(update, context)
+    elif data.startswith("sub_tier:"):
+        await subscription_tier_callback(update, context)
+    elif data.startswith("sub_buy:"):
+        await subscription_buy_callback(update, context)
+    elif data.startswith("comp") or data == "competition_menu":
+            await competition_router(update, context)
+    elif data.startswith("admin"):
+            await handlers_admin.admin_router(update, context)
     else:
-        await update.message.reply_text(
-            "این بخش به‌زودی اضافه می‌شود. 🚧", reply_markup=main_menu_keyboard()
-        )
-
-# ---------------------------------------------------------------------------
-# Background job: automatic market fluctuation
-# ---------------------------------------------------------------------------
-
-async def market_job(context: ContextTypes.DEFAULT_TYPE):
-    new_price, bought, sold = fluctuate_market()
-    logger.info(f"Market price updated: {new_price} (bought={bought}, sold={sold})")
+        pass
 
 
-# ---------------------------------------------------------------------------
-# Application setup
-# ---------------------------------------------------------------------------
+# ============================================================
+#  SECTION 7: MAIN — اجرای ربات
+# ============================================================
+# -*- coding: utf-8 -*-
+"""
+main.py — نقطه‌ی ورود ربات LIBER
+-------------------------------------------------------------
+این فایل همه‌ی ماژول‌ها را کنار هم می‌چیند و ربات را اجرا می‌کند.
 
-def main():
-    init_db()
+فایل‌های همراه (باید کنار همین فایل در همان پوشه باشند):
+    py                 تنظیمات، تعرفه‌ها، رنک‌ها
+    database.py                لایه‌ی دیتابیس (SQLite)
+    keyboards.py                سازنده‌ی دکمه‌های شیشه‌ای
+    handlers_user.py           منو، بازار، بانک، صندوق، اشتراک، برداشت، رفرال
+    handlers_admin.py          پنل مدیریت (تایید برداشت، آمار، پیام همگانی، بن)
+    handlers_competition.py    رقابت آنلاین رنک‌بندی‌شده (صف واقعی، تورنمنت)
 
+نصب:
+    pip install python-telegram-bot==21.*
+
+اجرا:
+    python main.py
+
+قبل از اجرا حتماً BOT_TOKEN و ADMIN_IDS را در py تنظیم کنید،
+یا با متغیرهای محیطی BOT_TOKEN / ADMIN_IDS override کنید.
+"""
+import logging
+
+from telegram import Update, LabeledPrice
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    PreCheckoutQueryHandler,
+    filters,
+    ContextTypes,
+)
+
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+)
+logger = logging.getLogger("LIBER.main")
+
+
+# ---------------------------------------------------------------
+#  دستور مخفی ادمین (طبق ADMIN_SECRET_COMMAND)
+# ---------------------------------------------------------------
+async def admin_secret_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        # برای هر کس دیگری، انگار این دستور اصلاً وجود ندارد
+        return
+    await update.message.reply_text("👑 پنل مدیریت LIBER", reply_markup=admin_panel_keyboard())
+
+
+# ---------------------------------------------------------------
+#  خطاهای عمومی (تا کرش نکند)
+# ---------------------------------------------------------------
+async def error_handler(update, context: ContextTypes.DEFAULT_TYPE):
+    logger.error("خطا در پردازش آپدیت:", exc_info=context.error)
+
+
+# ---------------------------------------------------------------
+#  ساخت اپلیکیشن
+# ---------------------------------------------------------------
+def build_application() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
+    # --- شروع و عضویت اجباری ---
+    app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CallbackQueryHandler(check_join_callback, pattern="^check_join$"))
-    app.add_handler(CallbackQueryHandler(market_callback, pattern="^mkt_"))
-    app.add_handler(CallbackQueryHandler(shop_callback, pattern="^shop_"))
-    app.add_handler(CallbackQueryHandler(chest_callback, pattern="^chest_open_"))
-    app.add_handler(CallbackQueryHandler(games_callback, pattern="^game_"))
-    app.add_handler(CallbackQueryHandler(missions_callback, pattern="^mis_"))
 
-    # Standalone admin.py panel (activated only for ADMIN_IDS, via /admin command)
-    try:
-        import admin as admin_module
-        admin_module.register_admin_handlers(app, admin_ids=ADMIN_IDS, db_path=DB_PATH)
-    except ImportError:
-        logger.warning("admin.py not found next to main.py — admin panel module not loaded.")
-    app.add_handler(CommandHandler("chest", chest_menu))
-    app.add_handler(CommandHandler("profile", profile))
-    app.add_handler(CommandHandler("wallet", wallet))
-    app.add_handler(CommandHandler("market", market_view))
-    app.add_handler(CommandHandler("buy", buy_liber))
-    app.add_handler(CommandHandler("sell", sell_liber))
-    app.add_handler(CommandHandler("daily", daily_reward))
-    app.add_handler(CommandHandler("top", leaderboard))
-    app.add_handler(CommandHandler("invite", invite))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("settings", settings_view))
-    app.add_handler(CommandHandler("setbio", set_bio))
+    # --- دستور مخفی ادمین ---
+    app.add_handler(CommandHandler(ADMIN_SECRET_COMMAND.lstrip("/"), admin_secret_command))
 
-    # Country & buildings
-    app.add_handler(CommandHandler("found", found_country))
-    app.add_handler(CommandHandler("country", country_view))
-    app.add_handler(CommandHandler("build", build))
+    # --- منوهای اصلی کاربر (شامل رقابت و ادمین به‌عنوان fallback) ---
+    app.add_handler(CallbackQueryHandler(callback_router))
 
-    # Bank & investments
-    app.add_handler(CommandHandler("deposit", bank_deposit))
-    app.add_handler(CommandHandler("claim", bank_claim))
-    app.add_handler(CommandHandler("invest", invest))
-    app.add_handler(CommandHandler("claim_invest", claim_investments))
+    # --- رقابت آنلاین: دستور مستقیم هم داشته باشد ---
+    app.add_handler(CommandHandler("competition", competition_command))
 
-    # Missions & achievements
-    app.add_handler(CommandHandler("missions", get_missions))
-    app.add_handler(CommandHandler("complete", complete_mission))
-    app.add_handler(CommandHandler("achievements", achievements_view))
+    # --- پرداخت با استارز (اشتراک) ---
+    app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
+    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
 
-    # Alliances
-    app.add_handler(CommandHandler("create_alliance", create_alliance))
-    app.add_handler(CommandHandler("join_alliance", join_alliance))
-    app.add_handler(CommandHandler("alliance", alliance_view))
+    # --- پیام‌های متنی (مراحل چندقسمتی + broadcast/ban ادمین) ---
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_router))
 
-    # Shop & VIP (in-game currency only)
-    app.add_handler(CommandHandler("shop", shop_view))
-    app.add_handler(CommandHandler("buy_item", buy_item))
-    app.add_handler(CommandHandler("buy_vip", buy_vip))
-    app.add_handler(CommandHandler("vip", vip_status_view))
+    # --- خطاها ---
+    app.add_error_handler(error_handler)
 
-    # Events
-    app.add_handler(CommandHandler("events", events_view))
+    return app
 
-    # League & season
-    app.add_handler(CommandHandler("league", league_view))
-    app.add_handler(CommandHandler("season_top", season_leaderboard))
 
-    # Mini-games
-    app.add_handler(CommandHandler("wheel", game_wheel))
-    app.add_handler(CommandHandler("lucky", game_lucky))
-    app.add_handler(CommandHandler("treasure", game_treasure))
+# ---------------------------------------------------------------
+#  کارهای زمان‌بندی‌شده (Job Queue)
+# ---------------------------------------------------------------
+def schedule_jobs(app: Application):
+    jq = app.job_queue
+    if jq is None:
+        logger.warning("job_queue فعال نیست — برای فعال‌سازی: pip install 'python-telegram-bot[job-queue]'")
+        return
 
-    # Auction
-    app.add_handler(CommandHandler("auction", auction_view))
-    app.add_handler(CommandHandler("bid", auction_bid))
+    # نوسان بازار هر ۱ ساعت
+    jq.run_repeating(
+        lambda context: _fluctuate_market_job(context),
+        interval=MARKET_UPDATE_INTERVAL_SECONDS,
+        first=60,
+    )
 
-    # Jobs
-    app.add_handler(CommandHandler("jobs", jobs_view))
-    app.add_handler(CommandHandler("setjob", set_job))
-    app.add_handler(CommandHandler("work", work))
-    app.add_handler(CallbackQueryHandler(jobs_callback, pattern="^job_"))
+    # صف مسابقه‌ی رقابت آنلاین
+    jq.run_repeating(queue_matchmaking_job, interval=MATCH_QUEUE_CHECK_SECONDS, first=30)
 
-    # Online Competition
-    app.add_handler(CommandHandler("competition", competition_view))
-    app.add_handler(CallbackQueryHandler(competition_callback, pattern="^comp_"))
+    # تورنمنت فصلی
+    jq.run_repeating(tournament_job, interval=86400, first=120)
 
-    # Clan war
-    app.add_handler(CommandHandler("clanwar", clan_war_simulate))
 
-    # Research & defense
-    app.add_handler(CommandHandler("research", research_view))
-    app.add_handler(CommandHandler("research_upgrade", research_upgrade))
-    app.add_handler(CommandHandler("defense", defense_view))
-    app.add_handler(CommandHandler("defense_upgrade", defense_upgrade))
+async def _fluctuate_market_job(context: ContextTypes.DEFAULT_TYPE):
+    low, high = MARKET_FLUCTUATION_RANGE
+    old_price, new_price, change_pct = fluctuate_market(low, high)
+    logger.info(f"بازار بروزرسانی شد: {old_price} → {new_price} ({change_pct:+.2%})")
 
-    # Exploration
-    app.add_handler(CommandHandler("explore", exploration))
 
-    # Gift codes
-    app.add_handler(CommandHandler("gift", redeem_gift))
-    app.add_handler(CommandHandler("creategift", create_gift_admin))
+# ---------------------------------------------------------------
+#  اجرا
+# ---------------------------------------------------------------
+def main():
+    init_db()
+    app = build_application()
+    schedule_jobs(app)
 
-    # Prediction market
-    app.add_handler(CommandHandler("predict", predict_view))
-    app.add_handler(CommandHandler("predict_up", predict_up))
-    app.add_handler(CommandHandler("predict_down", predict_down))
-
-    # Smart advisor & news
-    app.add_handler(CommandHandler("advisor", smart_advisor))
-    app.add_handler(CommandHandler("news", world_news))
-
-    # Admin
-    app.add_handler(CommandHandler("admin", admin_panel))
-    app.add_handler(CommandHandler("ban", ban_user))
-    app.add_handler(CommandHandler("unban", unban_user))
-    app.add_handler(CommandHandler("broadcast", broadcast))
-    app.add_handler(CallbackQueryHandler(admin_callback, pattern="^admin_"))
-
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, menu_router))
-
-    job_queue = app.job_queue
-    job_queue.run_repeating(market_job, interval=1800, first=10)       # every 30 min
-    job_queue.run_repeating(trigger_random_event, interval=21600, first=3600)  # every 6h
-    job_queue.run_repeating(prediction_resolve_job, interval=1800, first=1800)  # every 30 min
-    job_queue.run_repeating(tournament_job, interval=86400, first=60)  # check daily
-
-    logger.info("LIBER bot starting...")
+    logger.info("🚀 ربات LIBER در حال اجراست...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
+
 
 if __name__ == "__main__":
     main()
