@@ -931,6 +931,10 @@ def main_menu_keyboard(is_admin=False):
         [InlineKeyboardButton("⭐ اشتراک ویژه", callback_data="menu_subscription"),
          InlineKeyboardButton("👥 دعوت دوستان", callback_data="menu_referral"),
          InlineKeyboardButton("📤 برداشت", callback_data="withdraw_start")],
+        [InlineKeyboardButton("🎰 گردونه شانس", callback_data="menu_wheel"),
+         InlineKeyboardButton("🎁 کد هدیه", callback_data="menu_giftcode"),
+         InlineKeyboardButton("🎖 دستاوردها", callback_data="menu_achievements")],
+        [InlineKeyboardButton("🏆 رتبه دعوت ماهانه", callback_data="menu_referral_top")],
         [InlineKeyboardButton("🎯 ماموریت روزانه (اجباری)", callback_data="daily_mission")],
         [InlineKeyboardButton("⚔️ رقابت آنلاین", callback_data="competition_menu")],
         [InlineKeyboardButton("❓ راهنما", callback_data="menu_help")],
@@ -1005,6 +1009,7 @@ def admin_panel_keyboard():
         [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats")],
         [InlineKeyboardButton("💰 افزودن سکه/لیبر به کاربر", callback_data="admin_give_currency")],
         [InlineKeyboardButton("🎫 فعال‌سازی دستی اشتراک", callback_data="admin_grant_sub")],
+        [InlineKeyboardButton("🎁 ساخت کد هدیه", callback_data="giftcode_admin_create")],
         [InlineKeyboardButton("📢 پیام همگانی", callback_data="admin_broadcast")],
         [InlineKeyboardButton("🚫 مدیریت کاربر (بن/رفع بن)", callback_data="admin_user_manage")],
         [InlineKeyboardButton("🔙 خروج از پنل", callback_data="main_menu")],
@@ -1093,6 +1098,9 @@ def _play_match(power_a, power_b):
     return ("a" if score_a > score_b else "b"), score_a, score_b
 
 
+_win_streaks = {}  # user_id -> consecutive win count (in-memory, resets on restart — acceptable for a fun badge)
+
+
 def _apply_result(user_id, outcome):
     """محاسبه‌ی مدال/LIBER/ارتقا برای یک بازیکن. متن نتیجه را برمی‌گرداند."""
     profile = get_comp_profile(user_id)
@@ -1100,6 +1108,7 @@ def _apply_result(user_id, outcome):
 
     if outcome == "loss":
         comp_record_result(user_id, "loss")
+        _win_streaks[user_id] = 0
         return "😔 باختی. فقط هزینه‌ی ورود از دست رفت، مدالی کم نشد."
 
     medals_per_win = medals_per_win_for_rank(min(rank_index, MAX_RANK_INDEX - 1))
@@ -1114,6 +1123,7 @@ def _apply_result(user_id, outcome):
         comp_record_result(user_id, "win", medals_per_win, reward)
         text = f"🏆 بردی! +{medals_per_win} مدال، +{reward} LIBER"
         comp_daily_mission_add_win(user_id)
+        _win_streaks[user_id] = _win_streaks.get(user_id, 0) + 1
 
     new_rank = comp_promote_if_ready(
         user_id, wins_required_for_rank, medals_per_win_for_rank, MAX_RANK_INDEX
@@ -1139,6 +1149,9 @@ async def _resolve_match(bot, user_a, user_b, vs_bot):
             await bot.send_message(user_a, f"⚔️ نتیجه‌ی مسابقه با ربات: {score_a} - {score_b}\n\n{text_a}")
         except TelegramError:
             pass
+        if result == "win":
+            import handlers_bonus
+            await handlers_bonus.check_win_streak_achievement(user_a, _win_streaks.get(user_a, 0), bot)
         return
 
     profile_b = get_comp_profile(user_b)
@@ -1168,6 +1181,12 @@ async def _resolve_match(bot, user_a, user_b, vs_bot):
         await bot.send_message(user_b, f"⚔️ مسابقه با {name_a}! نتیجه: {score_b} - {score_a}\n\n{text_b}")
     except TelegramError:
         pass
+
+    import handlers_bonus
+    if outcome_a == "win":
+        await handlers_bonus.check_win_streak_achievement(user_a, _win_streaks.get(user_a, 0), bot)
+    if outcome_b == "win":
+        await handlers_bonus.check_win_streak_achievement(user_b, _win_streaks.get(user_b, 0), bot)
 
 
 # ---------------------------------------------------------------
@@ -1560,7 +1579,16 @@ async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🏦 موجودی بانک: {round(u['bank_balance'], 2)}\n\n"
         f"{sub_block}\n"
     )
-    await q.edit_message_text(text, reply_markup=back_keyboard())
+
+    markup = back_keyboard()
+    if tier_key:
+        import handlers_bonus
+        vip_row = handlers_bonus.vip_bonus_button_row(user_id)
+        if vip_row:
+            from telegram import InlineKeyboardMarkup
+            markup = InlineKeyboardMarkup([vip_row, [markup.keyboard[0][0]]])
+
+    await q.edit_message_text(text, reply_markup=markup)
 
 
 # ---------------------------------------------------------------
@@ -1871,6 +1899,10 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
         reply_markup=back_keyboard(),
     )
 
+    import handlers_bonus
+    await handlers_bonus.check_first_subscription_achievement(user_id, context.bot)
+    await handlers_bonus.check_whale_status(user_id, context.bot)
+
     for admin_id in ADMIN_IDS:
         try:
             await context.bot.send_message(
@@ -1982,6 +2014,9 @@ async def withdraw_confirm_callback(update: Update, context: ContextTypes.DEFAUL
         except TelegramError:
             pass
 
+    import handlers_bonus
+    await handlers_bonus.check_first_withdraw_achievement(user_id, context.bot)
+
 
 # ---------------------------------------------------------------
 #  راهنما
@@ -2021,6 +2056,11 @@ async def text_message_router(update: Update, context: ContextTypes.DEFAULT_TYPE
     # سپس بررسی می‌کنیم آیا مربوط به یکی از قابلیت‌های اضافه است (کشور، اتحاد و...)
     import handlers_extra
     if await handlers_extra.extra_text_router(update, context):
+        return
+
+    # سپس قابلیت‌های پاداشی (کد هدیه و...)
+    import handlers_bonus
+    if await handlers_bonus.bonus_text_router(update, context):
         return
 
     awaiting = context.user_data.get("awaiting")
@@ -2107,7 +2147,10 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await admin_panel.admin_router(update, context)
     else:
         import handlers_extra
-        await handlers_extra.extra_callback_router(update, context)
+        handled = await handlers_extra.extra_callback_router(update, context)
+        if not handled:
+            import handlers_bonus
+            await handlers_bonus.bonus_callback_router(update, context)
 
 
 # ============================================================
@@ -2228,6 +2271,14 @@ def schedule_jobs(app: Application):
 
     # تورنمنت فصلی
     jq.run_repeating(tournament_job, interval=86400, first=120)
+
+    # جایزه‌ی ماهانه‌ی برترین دعوت‌کننده (خودش تشخیص می‌ده ماه عوض شده یا نه)
+    jq.run_repeating(_referral_monthly_job, interval=86400, first=180)
+
+
+async def _referral_monthly_job(context: ContextTypes.DEFAULT_TYPE):
+    import handlers_bonus
+    await handlers_bonus.referral_monthly_reward_job(context)
 
 
 async def _fluctuate_market_job(context: ContextTypes.DEFAULT_TYPE):
