@@ -364,6 +364,7 @@ def country_no_country_keyboard():
 def country_view_keyboard():
     rows = [[InlineKeyboardButton(f"🏗 {name} ({BUILDING_COSTS[key]} LIBER)", callback_data=f"country_build:{key}")]
             for key, name in BUILDING_NAMES.items()]
+    rows.append([InlineKeyboardButton("🪖 تسهیلات نظامی", callback_data="menu_military")])
     rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")])
     return InlineKeyboardMarkup(rows)
 
@@ -381,7 +382,7 @@ def alliance_no_alliance_keyboard():
 
 def alliance_view_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚔️ جنگ کلن", callback_data="menu_clanwar")],
+        [InlineKeyboardButton("⚔️ جنگ کلن (رتبه‌بندی‌شده)", callback_data="menu_clanwar2")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")],
     ])
 
@@ -572,6 +573,9 @@ async def alliance_create_callback(update: Update, context: ContextTypes.DEFAULT
     await q.edit_message_text("🤝 اسم اتحاد جدید رو بفرستید (حداکثر ۳۰ حرف):")
 
 
+ALLIANCE_CREATE_COST = 300
+
+
 async def _do_create_alliance(update, context, raw_text):
     user_id = update.effective_user.id
     if get_alliance_membership(user_id):
@@ -584,9 +588,16 @@ async def _do_create_alliance(update, context, raw_text):
     if get_alliance_by_name(name):
         await update.message.reply_text("❌ این اسم قبلاً استفاده شده.")
         return
+    user = get_user(user_id)
+    if user["liber"] < ALLIANCE_CREATE_COST:
+        await update.message.reply_text(f"❌ برای ساخت کلن به {ALLIANCE_CREATE_COST} LIBER نیاز داری.")
+        return
+    update_balance(user_id, liber=-ALLIANCE_CREATE_COST)
     create_alliance(name, user_id)
     log_transaction(user_id, "CREATE_ALLIANCE", name)
-    await update.message.reply_text(f"🤝 اتحاد «{name}» ساخته شد!", reply_markup=back_keyboard())
+    await update.message.reply_text(
+        f"🤝 اتحاد «{name}» ساخته شد! (-{ALLIANCE_CREATE_COST} LIBER)", reply_markup=back_keyboard()
+    )
 
 
 async def alliance_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1001,7 +1012,6 @@ EXTRA_CALLBACKS = {
     "menu_alliance": alliance_menu_callback,
     "alliance_create": alliance_create_callback,
     "alliance_join": alliance_join_callback,
-    "menu_clanwar": clan_war_callback,
     "menu_job": job_menu_callback,
     "job_work": job_work_callback,
     "menu_auction": auction_menu_callback,
