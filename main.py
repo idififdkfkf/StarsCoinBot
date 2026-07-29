@@ -2270,6 +2270,11 @@ async def text_message_router(update: Update, context: ContextTypes.DEFAULT_TYPE
     if await handlers_war.war_text_router(update, context):
         return
 
+    # سپس مزایده‌ی نظامی
+    import handlers_market
+    if await handlers_market.market_text_router(update, context):
+        return
+
     awaiting = context.user_data.get("awaiting")
     raw_text = update.message.text.strip()
 
@@ -2377,7 +2382,10 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             handled = await handlers_military.military_callback_router(update, context)
         if not handled:
             import handlers_war
-            await handlers_war.war_callback_router(update, context)
+            handled = await handlers_war.war_callback_router(update, context)
+        if not handled:
+            import handlers_market
+            await handlers_market.market_callback_router(update, context)
 
 
 # ============================================================
@@ -2514,6 +2522,14 @@ def schedule_jobs(app: Application):
 
     # ⚡ جایزه‌ی برق‌آسا (اولین نفری که بزنه می‌بره) — هر ۳ ساعت یه دور جدید
     jq.run_repeating(_lightning_round_job, interval=3 * 3600, first=600)
+
+    # 🏛 حل‌وفصل مزایده‌های نظامی تمام‌شده
+    jq.run_repeating(_market_sweep_job, interval=300, first=90)
+
+
+async def _market_sweep_job(context: ContextTypes.DEFAULT_TYPE):
+    import handlers_market
+    await handlers_market.market_sweep_job(context)
 
 
 async def _lightning_round_job(context: ContextTypes.DEFAULT_TYPE):
