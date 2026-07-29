@@ -37,6 +37,11 @@ logger = logging.getLogger("LIBER.bonus")
 # ============================================================
 VIP_DAILY_BONUS_LIBER = {"normal": 15, "dragon": 35, "liberi": 70}
 
+# تورنمنت مخفی VIP: کاملاً پنهانه، فقط مشترکین می‌بیننش. هر بار پاداش روزانه‌ی VIP رو
+# می‌گیرن ۱ امتیاز فصلی می‌گیرن؛ هر ۳۰ روز به ۳ نفر برتر جایزه‌ی بزرگ می‌ده.
+VIP_TOURNAMENT_INTERVAL_SECONDS = 30 * 86400
+VIP_TOURNAMENT_REWARDS = {1: 1000, 2: 600, 3: 400}
+
 WHEEL_MIN_BET = 10
 WHEEL_OUTCOMES = [0, 0.5, 1, 1.5, 2, 5, 10]
 WHEEL_WEIGHTS = [20, 20, 20, 15, 15, 7, 3]
@@ -114,6 +119,25 @@ def _ensure_tables():
             notified_at INTEGER NOT NULL
         )
         """)
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS vip_tournament_points (
+            user_id INTEGER PRIMARY KEY,
+            points INTEGER NOT NULL DEFAULT 0
+        )
+        """)
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS vip_tournament_season (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            season_number INTEGER NOT NULL DEFAULT 1,
+            started_at INTEGER NOT NULL
+        )
+        """)
+        row = conn.execute("SELECT 1 FROM vip_tournament_season WHERE id = 1").fetchone()
+        if not row:
+            conn.execute(
+                "INSERT INTO vip_tournament_season (id, season_number, started_at) VALUES (1, 1, ?)",
+                (int(time.time()),),
+            )
     _tables_ready = True
 
 
@@ -146,13 +170,16 @@ async def _notify_achievement(bot, user_id, key):
 # ============================================================
 #   ۱) دکمه‌ی مخفی VIP — فقط در پروفایل کاربران مشترک دیده می‌شود
 # ============================================================
-def vip_bonus_button_row(user_id):
-    """اگر کاربر اشتراک فعال دارد و امروز هنوز پاداش VIP رو نگرفته، یک ردیف دکمه برمی‌گرداند؛
-    در غیر این صورت None (یعنی این دکمه اصلاً برای بقیه دیده نمی‌شود)."""
+def vip_bonus_button_rows(user_id):
+    """اگر کاربر اشتراک فعال دارد، ردیف‌های دکمه‌ی مخفی (پاداش روزانه + تورنمنت مخفی) برمی‌گرداند؛
+    در غیر این صورت None (یعنی این دکمه‌ها اصلاً برای بقیه دیده نمی‌شوند)."""
     tier_key = get_active_subscription_tier(user_id)
     if not tier_key:
         return None
-    return [InlineKeyboardButton("👑 پاداش ویژه‌ی VIP امروز", callback_data="vip_secret_bonus")]
+    return [
+        [InlineKeyboardButton("👑 پاداش ویژه‌ی VIP امروز", callback_data="vip_secret_bonus")],
+        [InlineKeyboardButton("🕵️ تورنمنت مخفی VIP", callback_data="vip_tournament_secret")],
+    ]
 
 
 async def vip_secret_bonus_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -179,13 +206,90 @@ async def vip_secret_bonus_callback(update: Update, context: ContextTypes.DEFAUL
     update_balance(user_id, liber=reward)
     with get_conn() as conn:
         conn.execute("INSERT INTO vip_bonus_claims (user_id, claim_date) VALUES (?, ?)", (user_id, today))
+        conn.execute(
+            """INSERT INTO vip_tournament_points (user_id, points) VALUES (?, 1)
+               ON CONFLICT(user_id) DO UPDATE SET points = points + 1""",
+            (user_id,),
+        )
     log_transaction(user_id, "VIP_DAILY_BONUS", str(reward))
 
     tier_title = SUBSCRIPTION_TIERS[tier_key]["title"]
     await q.edit_message_text(
-        f"👑 پاداش ویژه‌ی VIP گرفتی!\n{tier_title}\n+{reward} LIBER\n\nفردا دوباره سر بزن 🥂",
+        f"👑 پاداش ویژه‌ی VIP گرفتی!\n{tier_title}\n+{reward} LIBER\n\n"
+        f"🏆 امتیازت تو تورنمنت مخفی VIP هم بالا رفت (هر روز که سر بزنی +۱ امتیاز)!\nفردا دوباره سر بزن 🥂",
         reply_markup=back_keyboard(),
     )
+
+
+async def vip_tournament_secret_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """کاملاً پنهانه — فقط از پروفایل مشترکین قابل‌دسترسه، جایی دیگه دیده نمی‌شه."""
+    _ensure_tables()
+    q = update.callback_query
+    user_id = q.from_user.id
+    tier_key = get_active_subscription_tier(user_id)
+    if not tier_key:
+        await q.answer("این بخش فقط برای مشترکینه.", show_alert=True)
+        return
+
+    await q.answer()
+    with get_conn() as conn:
+        my_points_row = conn.execute("SELECT points FROM vip_tournament_points WHERE user_id = ?", (user_id,)).fetchone()
+        top5 = conn.execute("SELECT user_id, points FROM vip_tournament_points ORDER BY points DESC LIMIT 5").fetchall()
+        season = conn.execute("SELECT * FROM vip_tournament_season WHERE id = 1").fetchone()
+
+    my_points = my_points_row["points"] if my_points_row else 0
+    days_left = max(0, (VIP_TOURNAMENT_INTERVAL_SECONDS - (int(time.time()) - season["started_at"])) // 86400)
+
+    lines = [
+        "🕵️ تورنمنت مخفی VIP\n",
+        "این بخش فقط برای مشترکینه و هیچ‌جای دیگه‌ای تبلیغ نمی‌شه 🤫\n",
+        f"امتیاز شما: {my_points}",
+        f"⏳ {days_left} روز تا پایان این دوره\n",
+        "🏆 برترین‌ها:",
+    ]
+    for i, row in enumerate(top5, start=1):
+        u = get_user(row["user_id"])
+        name = u["first_name"] if u else str(row["user_id"])
+        lines.append(f"  {i}. {name} — {row['points']} امتیاز")
+    r = VIP_TOURNAMENT_REWARDS
+    lines.append(f"\n🎁 جوایز پایان دوره: ۱ام {r[1]} | ۲ام {r[2]} | ۳ام {r[3]} LIBER")
+
+    await q.edit_message_text("\n".join(lines), reply_markup=back_keyboard())
+
+
+async def vip_tournament_reward_job(context: ContextTypes.DEFAULT_TYPE):
+    _ensure_tables()
+    with get_conn() as conn:
+        season = conn.execute("SELECT * FROM vip_tournament_season WHERE id = 1").fetchone()
+    now = int(time.time())
+    if now - season["started_at"] < VIP_TOURNAMENT_INTERVAL_SECONDS:
+        return
+
+    with get_conn() as conn:
+        top3 = conn.execute("SELECT user_id, points FROM vip_tournament_points ORDER BY points DESC LIMIT 3").fetchall()
+
+    for i, row in enumerate(top3, start=1):
+        if row["points"] <= 0:
+            continue
+        reward = VIP_TOURNAMENT_REWARDS.get(i, 0)
+        update_balance(row["user_id"], liber=reward)
+        log_transaction(row["user_id"], "VIP_TOURNAMENT_REWARD", f"rank={i}")
+        try:
+            await context.bot.send_message(
+                row["user_id"],
+                f"🕵️ تبریک! تو تورنمنت مخفی VIP رتبه‌ی {i} شدی و {reward} LIBER جایزه گرفتی 🎉\n"
+                "این یه جایزه‌ی کاملاً ویژه بود، فقط برای بهترین مشترکین 👑",
+            )
+        except TelegramError:
+            pass
+
+    new_season = season["season_number"] + 1
+    with get_conn() as conn:
+        conn.execute("DELETE FROM vip_tournament_points")
+        conn.execute(
+            "UPDATE vip_tournament_season SET season_number = ?, started_at = ? WHERE id = 1", (new_season, now)
+        )
+    logger.info(f"تورنمنت مخفی VIP برگزار شد. فصل جدید: {new_season}")
 
 
 # ============================================================
@@ -500,6 +604,7 @@ async def check_whale_status(user_id, bot):
 # ============================================================
 BONUS_CALLBACKS = {
     "vip_secret_bonus": vip_secret_bonus_callback,
+    "vip_tournament_secret": vip_tournament_secret_callback,
     "menu_wheel": wheel_menu_callback,
     "wheel_spin": wheel_spin_callback,
     "wheel_noop": lambda u, c: _noop(u, c),
