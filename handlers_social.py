@@ -2,14 +2,17 @@
 """
 handlers_social.py — قابلیت‌های اجتماعی و رقابتی ربات LIBER (فایل جدا)
 ================================================================
-فایل پنجم، کاملاً جدا. جدول‌های خودش را در اولین استفاده می‌سازد.
+فایل کاملاً جدا. جدول‌های خودش را در اولین استفاده می‌سازد.
 
-شامل ۶ قابلیت:
+⚠️ توجه: قابلیت «⚡ جایزه‌ی برق‌آسا» طبق درخواست کاربر کاملاً حذف شده
+(هم جدول/جاب زمان‌بندی‌شده‌اش و هم دکمه‌اش) — دیگر هیچ‌جا وجود ندارد.
+
+شامل ۵ قابلیت باقی‌مانده:
     🔥 جنگ بزرگ سروری        ۵ نفر هم‌رنک هم‌زمان وارد می‌شن، هر چند دقیقه نتیجه‌ی گروهی
     📅 ماموریت هفتگی          چالش ۵ برد در طول هفته، جایزه‌ی بزرگ‌تر از روزانه
-    🎨 فروشگاه ظاهری          قاب و لقب کنار اسم (فقط جنبه‌ی نمایشی، تاثیری در قدرت نداره)
+    🎨 فروشگاه ظاهری          قاب و لقب کنار اسم (فقط جنبه‌ی نمایشی)
     🎫 قرعه‌کشی روزانه         یک شانس رایگان در روز برای جایزه‌ی بزرگ
-    💸 ارسال LIBER به کاربر    انتقال مستقیم بین دو کاربر، بدون واسطه
+    💸 ارسال LIBER به کاربر    انتقال مستقیم بین دو کاربر
     👹 چالش هفتگی باس          فقط یک‌بار در هفته، حریف قوی، جایزه‌ی بزرگ
 """
 import time
@@ -27,9 +30,6 @@ from main import (
 
 logger = logging.getLogger("LIBER.social")
 
-# ============================================================
-#   تنظیمات محلی
-# ============================================================
 SERVER_WAR_MIN_PLAYERS = 5
 SERVER_WAR_CHECK_SECONDS = 180
 SERVER_WAR_REWARDS = {1: 300, 2: 220, 3: 160, 4: 100, 5: 60}
@@ -38,8 +38,6 @@ WEEKLY_MISSION_WINS_NEEDED = 5
 WEEKLY_MISSION_REWARD_LIBER = 300
 WEEKLY_MISSION_REWARD_XP = 100
 
-# باشگاه مشتریان: ۴ ماموریت مستقل هفتگی، بی‌ربط به ماموریت روزانه‌ی اجباری.
-# هرکدوم جدا وقتی به هدفش برسه کامل می‌شه و ۳۰ XP جایزه می‌گیره — هر ۷ روز ست جدید.
 CLUB_TASKS = {
     "win2": {"desc": "🏆 ۲ برد در رقابت آنلاین بگیر", "target": 2, "reward_xp": 30, "reward_liber": 20},
     "chest2": {"desc": "🎁 ۲ صندوق باز کن", "target": 2, "reward_xp": 30, "reward_liber": 20},
@@ -57,11 +55,11 @@ COSMETIC_ITEMS = {
 }
 
 LOTTERY_PRIZES = [
-    (40, 20, 60),      # (وزن، حداقل، حداکثر LIBER)
+    (40, 20, 60),
     (30, 60, 150),
     (18, 150, 400),
     (9, 400, 900),
-    (3, 900, 2500),    # جکپات
+    (3, 900, 2500),
 ]
 
 P2P_MIN_TRANSFER = 10
@@ -69,12 +67,9 @@ P2P_MAX_TRANSFER = 100000
 
 WEEKLY_BOSS_ENTRY_FEE = 100
 WEEKLY_BOSS_REWARD = 1500
-WEEKLY_BOSS_WIN_CHANCE = 0.35  # مستقل از رنک؛ یه باس واقعاً سخته
+WEEKLY_BOSS_WIN_CHANCE = 0.35
 
 
-# ============================================================
-#   جداول محلی
-# ============================================================
 _tables_ready = False
 
 
@@ -165,9 +160,9 @@ def _rank_index_of(user_id):
     return row["rank_index"] if row else 0
 
 
-# ============================================================
-#   ۱) جنگ بزرگ سروری (۵ نفر هم‌رنک)
-# ============================================================
+# ---------------------------------------------------------------
+#  جنگ بزرگ سروری
+# ---------------------------------------------------------------
 def _server_war_menu_keyboard(in_queue):
     rows = []
     if in_queue:
@@ -237,7 +232,6 @@ async def server_war_leave_callback(update: Update, context: ContextTypes.DEFAUL
 
 
 async def server_war_matching_job(context: ContextTypes.DEFAULT_TYPE):
-    """هر چند دقیقه صدا زده می‌شود؛ هر گروه ۵نفره‌ی هم‌رنک را به یک نبرد گروهی می‌فرستد."""
     _ensure_tables()
     with get_conn() as conn:
         queued = conn.execute("SELECT * FROM server_war_queue ORDER BY joined_at ASC").fetchall()
@@ -266,7 +260,6 @@ async def _resolve_server_war(bot, user_ids, rank_index):
             update_balance(uid, liber=reward)
         log_transaction(uid, "SERVER_WAR", f"placement={placement} reward={reward}")
         try:
-            names_order = ", ".join(str(u) for u, _ in scored)
             await bot.send_message(
                 uid,
                 f"🔥 جنگ بزرگ سروری تمام شد!\n🏅 رتبه‌ی شما: {placement} از {len(scored)}\n"
@@ -276,9 +269,9 @@ async def _resolve_server_war(bot, user_ids, rank_index):
             pass
 
 
-# ============================================================
-#   ۲) ماموریت هفتگی
-# ============================================================
+# ---------------------------------------------------------------
+#  ماموریت هفتگی
+# ---------------------------------------------------------------
 async def weekly_mission_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _ensure_tables()
     q = update.callback_query
@@ -343,7 +336,6 @@ async def weekly_mission_claim_callback(update: Update, context: ContextTypes.DE
 
 
 def record_weekly_win(user_id):
-    """صدا زده می‌شود بعد از هر برد در رقابت آنلاین (توسط handlers_competition.py)."""
     _ensure_tables()
     week_key = _week_key()
     with get_conn() as conn:
@@ -362,11 +354,7 @@ def record_weekly_win(user_id):
             )
 
 
-# ============================================================
-#   باشگاه مشتریان — ۴ ماموریت مستقل هفتگی (بی‌ربط به ماموریت روزانه)
-# ============================================================
 def record_club_task_progress(user_id, task_key):
-    """صدا زده می‌شود از هر جای ربات که اون کار انجام می‌شه (برد، صندوق، معامله، ماموریت روزانه)."""
     _ensure_tables()
     task = CLUB_TASKS.get(task_key)
     if not task:
@@ -378,7 +366,7 @@ def record_club_task_progress(user_id, task_key):
             (user_id, week_key, task_key),
         ).fetchone()
         if row and row["completed"]:
-            return None  # قبلاً کامل شده، دوباره جایزه نمی‌ده
+            return None
 
         new_progress = (row["progress"] if row else 0) + 1
         just_completed = new_progress >= task["target"]
@@ -429,9 +417,6 @@ async def club_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await q.edit_message_text("\n".join(lines), reply_markup=back_keyboard())
 
 
-# ============================================================
-#   ۳) فروشگاه ظاهری
-# ============================================================
 def _cosmetic_shop_keyboard(owned_keys):
     rows = []
     for key, item in COSMETIC_ITEMS.items():
@@ -540,7 +525,6 @@ async def cosmetic_equip_callback(update: Update, context: ContextTypes.DEFAULT_
 
 
 def get_display_badge(user_id):
-    """برای نمایش قاب/لقب کنار اسم کاربر در جاهای دیگر (مثلاً رقابت آنلاین) — اختیاری، fail-safe."""
     _ensure_tables()
     with get_conn() as conn:
         row = conn.execute("SELECT frame_key, title_key FROM cosmetic_equipped WHERE user_id = ?", (user_id,)).fetchone()
@@ -554,9 +538,6 @@ def get_display_badge(user_id):
     return " ".join(parts)
 
 
-# ============================================================
-#   ۴) قرعه‌کشی روزانه
-# ============================================================
 async def lottery_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _ensure_tables()
     q = update.callback_query
@@ -611,9 +592,6 @@ async def lottery_draw_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await q.edit_message_text(f"{emoji} قرعه‌کشی زدی و بردی: +{prize} LIBER!\n\nفردا دوباره امتحان کن.", reply_markup=back_keyboard())
 
 
-# ============================================================
-#   ۵) ارسال LIBER به کاربر دیگر
-# ============================================================
 async def transfer_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -683,9 +661,6 @@ async def _do_transfer_amount(update, context, raw_text):
         pass
 
 
-# ============================================================
-#   ۶) چالش هفتگی باس
-# ============================================================
 async def weekly_boss_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _ensure_tables()
     q = update.callback_query
@@ -753,9 +728,6 @@ async def weekly_boss_fight_callback(update: Update, context: ContextTypes.DEFAU
     await q.edit_message_text(text, reply_markup=back_keyboard())
 
 
-# ============================================================
-#   دیسپچر
-# ============================================================
 SOCIAL_CALLBACKS = {
     "menu_serverwar": server_war_menu_callback,
     "serverwar_join": server_war_join_callback,
@@ -773,84 +745,6 @@ SOCIAL_CALLBACKS = {
 }
 
 
-# ============================================================
-#   ⚡ جایزه‌ی برق‌آسا — اولین نفری که بزنه می‌بره
-# ============================================================
-LIGHTNING_INTERVAL_SECONDS = 3 * 3600  # هر ۳ ساعت یه دور جدید
-LIGHTNING_REWARD_RANGE = (200, 800)
-
-
-def _ensure_lightning_table():
-    _ensure_tables()
-    with get_conn() as conn:
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS lightning_rounds (
-            round_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            reward REAL NOT NULL,
-            created_at INTEGER NOT NULL,
-            claimed_by INTEGER,
-            claimed_at INTEGER
-        )
-        """)
-
-
-async def lightning_round_job(context: ContextTypes.DEFAULT_TYPE):
-    """هر چند ساعت یه دور جدید می‌سازه و به همه‌ی کاربران فعال پیام می‌فرسته."""
-    _ensure_lightning_table()
-    reward = random.randint(*LIGHTNING_REWARD_RANGE)
-    with get_conn() as conn:
-        cur = conn.execute(
-            "INSERT INTO lightning_rounds (reward, created_at) VALUES (?, ?)", (reward, int(time.time()))
-        )
-        round_id = cur.lastrowid
-        user_ids = [r["user_id"] for r in conn.execute("SELECT user_id FROM users WHERE is_banned = 0").fetchall()]
-
-    markup = InlineKeyboardMarkup([[InlineKeyboardButton("⚡ بگیرش!", callback_data=f"lightning_claim:{round_id}")]])
-    for uid in user_ids:
-        try:
-            await context.bot.send_message(
-                uid, f"⚡ جایزه‌ی برق‌آسا رسید!\n\nفقط اولین نفری که بزنه {reward} LIBER می‌بره — سریع باش!",
-                reply_markup=markup,
-            )
-        except TelegramError:
-            pass
-
-
-async def lightning_claim_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    _ensure_lightning_table()
-    q = update.callback_query
-    user_id = q.from_user.id
-    round_id = int(q.data.split(":", 1)[1])
-    now = int(time.time())
-
-    with get_conn() as conn:
-        row = conn.execute("SELECT * FROM lightning_rounds WHERE round_id = ?", (round_id,)).fetchone()
-        if not row:
-            await q.answer("این دور دیگه معتبر نیست.", show_alert=True)
-            return
-
-        # آپدیت اتمیک: فقط اگه هنوز کسی نگرفته (claimed_by IS NULL) رکورد رو می‌گیریم.
-        # اگه دو نفر هم‌زمان بزنن، فقط یکی از این UPDATEها rowcount=1 برمی‌گردونه — رقابت واقعی، بدون باگ.
-        cur = conn.execute(
-            "UPDATE lightning_rounds SET claimed_by = ?, claimed_at = ? WHERE round_id = ? AND claimed_by IS NULL",
-            (user_id, now, round_id),
-        )
-        won = cur.rowcount > 0
-
-    if won:
-        update_balance(user_id, liber=row["reward"])
-        log_transaction(user_id, "LIGHTNING_WIN", f"round={round_id} reward={row['reward']}")
-        await q.answer()
-        await q.edit_message_text(f"🎉 بردی! +{row['reward']} LIBER — سرعت عملت عالی بود ⚡")
-    else:
-        with get_conn() as conn:
-            winner_row = conn.execute("SELECT claimed_by FROM lightning_rounds WHERE round_id = ?", (round_id,)).fetchone()
-        winner = get_user(winner_row["claimed_by"]) if winner_row and winner_row["claimed_by"] else None
-        winner_name = winner["first_name"] if winner else "یکی دیگه"
-        await q.answer(f"😔 دیر رسیدی! {winner_name} زودتر گرفت.", show_alert=True)
-        await q.edit_message_text(f"⚡ این دور تموم شد — {winner_name} برنده شد.")
-
-
 async def social_callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     data = update.callback_query.data
     if data in SOCIAL_CALLBACKS:
@@ -861,9 +755,6 @@ async def social_callback_router(update: Update, context: ContextTypes.DEFAULT_T
         return True
     if data.startswith("cosmetic_equip:"):
         await cosmetic_equip_callback(update, context)
-        return True
-    if data.startswith("lightning_claim:"):
-        await lightning_claim_callback(update, context)
         return True
     return False
 
