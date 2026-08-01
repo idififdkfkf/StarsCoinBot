@@ -1,25 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-admin_panel.py — پنل مدیریت مستقل ربات LIBER
+admin.py — پنل مدیریت مستقل ربات LIBER
 ================================================================
-این فایل کاملاً جداست و باید کنار main.py قرار بگیرد. main.py در
-لحظه‌ی نیاز (وقتی کاربری با آیدی ادمین وارد بخش مدیریت می‌شود) این
-فایل را import می‌کند — نیازی به تغییر main.py برای فعال‌سازی نیست.
+این فایل کاملاً جداست و باید کنار main.py قرار بگیرد.
 
 شامل:
     • تایید/رد درخواست‌های برداشت TON
-    • آمار کلی ربات (کاربران، LIBER در گردش، فصل رقابت)
-    • پیام همگانی به همه‌ی کاربران فعال
-    • مدیریت بن/رفع‌بن کاربر با آیدی عددی
-
-فعال‌سازی: از دستور مخفی تنظیم‌شده در config.py (ADMIN_SECRET_COMMAND)
-یا از دکمه‌ی «👑 پنل مدیریت» که فقط برای ADMIN_IDS در منوی اصلی دیده
-می‌شود.
-"""
-# -*- coding: utf-8 -*-
-"""
-هندلرهای پنل مدیریت ربات LIBER
-شامل: تایید/رد برداشت TON، آمار ربات، پیام همگانی، مدیریت بن کاربر
+    • تایید/رد سفارش‌های گیفت استارز (fallback به handlers_competition_boost)
+    • آمار کلی ربات
+    • پیام همگانی
+    • مدیریت بن/رفع‌بن کاربر
+    • افزودن سکه/لیبر دستی + فعال‌سازی دستی اشتراک
 """
 import logging
 
@@ -27,9 +18,6 @@ from telegram import Update, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.error import TelegramError
 
-# همه‌ی این نام‌ها از main.py می‌آیند — چون همان چیزهایی هستند که ربات
-# اصلی هم برای دیتابیس، دکمه‌ها و تنظیمات استفاده می‌کند. هیچ کد یا
-# جدولی دوباره اینجا تعریف نمی‌شود؛ فقط استفاده از همان چیزهای موجود.
 from main import (
     ADMIN_IDS,
     SUBSCRIPTION_TIERS,
@@ -61,9 +49,6 @@ def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
 
-# ---------------------------------------------------------------
-#  ورود به پنل
-# ---------------------------------------------------------------
 async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     if not is_admin(q.from_user.id):
@@ -73,9 +58,6 @@ async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     await q.edit_message_text("👑 پنل مدیریت LIBER", reply_markup=admin_panel_keyboard())
 
 
-# ---------------------------------------------------------------
-#  درخواست‌های برداشت در انتظار
-# ---------------------------------------------------------------
 async def admin_pending_withdraws_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     if not is_admin(q.from_user.id):
@@ -151,9 +133,6 @@ async def admin_withdraw_decision_callback(update: Update, context: ContextTypes
             pass
 
 
-# ---------------------------------------------------------------
-#  آمار
-# ---------------------------------------------------------------
 async def admin_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     if not is_admin(q.from_user.id):
@@ -175,9 +154,6 @@ async def admin_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     await q.edit_message_text(text, reply_markup=admin_panel_keyboard())
 
 
-# ---------------------------------------------------------------
-#  پیام همگانی
-# ---------------------------------------------------------------
 async def admin_broadcast_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     if not is_admin(q.from_user.id):
@@ -192,7 +168,6 @@ async def admin_broadcast_callback(update: Update, context: ContextTypes.DEFAULT
 
 
 async def _do_broadcast(update, context, text):
-    admin_id = update.effective_user.id
     ids = all_user_ids()
     sent, failed = 0, 0
     for uid in ids:
@@ -204,12 +179,6 @@ async def _do_broadcast(update, context, text):
     await update.message.reply_text(f"✅ ارسال شد به {sent} کاربر. ({failed} ناموفق)", reply_markup=admin_panel_keyboard())
 
 
-# ---------------------------------------------------------------
-#  مدیریت بن
-# ---------------------------------------------------------------
-# ---------------------------------------------------------------
-#  افزودن سکه/لیبر به کاربر
-# ---------------------------------------------------------------
 async def admin_give_currency_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     if not is_admin(q.from_user.id):
@@ -257,9 +226,6 @@ async def _do_give_currency(update, context, raw_text):
         pass
 
 
-# ---------------------------------------------------------------
-#  فعال‌سازی دستی اشتراک
-# ---------------------------------------------------------------
 async def admin_grant_sub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     if not is_admin(q.from_user.id):
@@ -396,11 +362,7 @@ async def _do_ban_toggle(update, context, raw_text):
     await update.message.reply_text(f"✅ کاربر {target_id} {status_text} شد.", reply_markup=admin_panel_keyboard())
 
 
-# ---------------------------------------------------------------
-#  روتر پیام‌های متنی ادمین (broadcast / ban)
-# ---------------------------------------------------------------
 async def admin_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """اگر پیام متنی مربوط به یک مرحله‌ی ادمین باشد پردازش می‌کند و True برمی‌گرداند."""
     if not is_admin(update.effective_user.id):
         return False
 
@@ -426,9 +388,6 @@ async def admin_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     return False
 
 
-# ---------------------------------------------------------------
-#  دیسپچر کال‌بک‌های ادمین
-# ---------------------------------------------------------------
 ADMIN_CALLBACKS = {
     "admin_panel": admin_panel_callback,
     "admin_pending_withdraws": admin_pending_withdraws_callback,
@@ -466,4 +425,10 @@ async def admin_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "admin_gsub_other":
         await admin_grant_sub_other_callback(update, context)
+        return
+
+    # --- fallback: سفارش‌های گیفت استارز (پارت جدید handlers_competition_boost.py) ---
+    if data == "admin_pending_giftboost" or data.startswith("admin_gb_done:") or data.startswith("admin_gb_reject:"):
+        import handlers_competition_boost
+        await handlers_competition_boost.boost_callback_router(update, context)
         return
