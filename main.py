@@ -21,7 +21,7 @@ LIBER Telegram Bot — main.py
 # ============================================================
 #  SECTION 1: CONFIG — تنظیمات، تعرفه‌ها، رنک‌ها
 # ============================================================
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"          # توکن ربات از BotFather
+BOT_TOKEN = "8818731091:AAHD4vNWYdFfDD6C0__60vsd4hCDumRuB-Y"          # توکن ربات از BotFather
 ADMIN_IDS = [123456789]                     # آیدی عددی ادمین‌ها (با @userinfobot بگیر)
 DB_PATH = "liber.db"
 
