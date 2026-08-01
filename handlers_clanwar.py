@@ -2,8 +2,7 @@
 """
 handlers_clanwar.py — جنگ کلن مستقل با سیستم کاپ و تورنمنت (فایل جدا)
 ================================================================
-این سیستم کاملاً از «رقابت آنلاین» فردی (handlers_competition.py) جداست
-و هیچ داده یا منطقی با آن به اشتراک نمی‌گذارد — دقیقاً طبق درخواست.
+این سیستم کاملاً از «رقابت آنلاین» فردی جداست.
 
 اقتصاد:
     🤝 ساخت کلن: ۳۰۰ LIBER (در handlers_extra.py اعمال شده)
@@ -12,8 +11,7 @@ handlers_clanwar.py — جنگ کلن مستقل با سیستم کاپ و تو�
     🏅 کاپ کلن: هر برد +۲۰ کاپ به کلن اضافه می‌شود
     📈 ارتقا: کاپ‌رنک ۱→۲ با ۴ برد (۸۰ کاپ)، بعدش هر رنک بیشتر از قبلی لازم دارد
     📆 تورنمنت ماهانه: ۳ کلن برتر بر اساس کاپ فصلی، جایزه بین همه‌ی اعضای کلن پخش می‌شود
-        (۶۰٪ مساوی + ۴۰٪ متناسب با مشارکت در بردها)، نه فقط رهبر:
-        🥇 ۱۵۰۰ LIBER   🥈 ۱۰۰۰ LIBER   🥉 ۸۰۰ LIBER
+        (۶۰٪ مساوی + ۴۰٪ متناسب با مشارکت در بردها)
 """
 import time
 import random
@@ -27,9 +25,6 @@ from main import get_conn, get_user, update_balance, log_transaction, back_keybo
 
 logger = logging.getLogger("LIBER.clanwar")
 
-# ============================================================
-#   تنظیمات
-# ============================================================
 CLAN_WAR_ENTRY_FEE = 50
 CLAN_WAR_WIN_REWARD_PER_MEMBER = 70
 CLAN_WAR_CUPS_PER_WIN = 20
@@ -47,16 +42,13 @@ CLAN_TOURNAMENT_REWARDS = {1: 1500, 2: 1000, 3: 800}
 
 
 def wins_required_for_clan_rank(rank_index: int) -> int:
-    return 4 + rank_index * 3  # رنک ۰→۱: ۴ برد، ۱→۲: ۷ برد، ۲→۳: ۱۰ برد، ...
+    return 4 + rank_index * 3
 
 
 def cups_threshold_for_clan_rank(rank_index: int) -> float:
     return wins_required_for_clan_rank(rank_index) * CLAN_WAR_CUPS_PER_WIN
 
 
-# ============================================================
-#   جداول محلی
-# ============================================================
 _tables_ready = False
 
 
@@ -131,9 +123,6 @@ def _get_alliance(alliance_id):
         return conn.execute("SELECT * FROM alliances WHERE alliance_id = ?", (alliance_id,)).fetchone()
 
 
-# ============================================================
-#   منوی جنگ کلن
-# ============================================================
 def _clan_war_keyboard(in_pool):
     rows = []
     if in_pool:
@@ -243,7 +232,7 @@ async def clanwar_leave_callback(update: Update, context: ContextTypes.DEFAULT_T
         conn.execute(
             "DELETE FROM clan_war_participants WHERE alliance_id = ? AND user_id = ?", (alliance_id, user_id)
         )
-    update_balance(user_id, liber=CLAN_WAR_ENTRY_FEE)  # ورودی برمی‌گرده چون هنوز جنگ شروع نشده
+    update_balance(user_id, liber=CLAN_WAR_ENTRY_FEE)
     await q.edit_message_text("🚪 از جنگ کلن انصراف دادی و ورودی برگشت.", reply_markup=_clan_war_keyboard(False))
 
 
@@ -267,11 +256,7 @@ async def clanwar_top_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     await q.edit_message_text("\n".join(lines), reply_markup=back_keyboard())
 
 
-# ============================================================
-#   حل جنگ کلن (واقعی کلن‌به‌کلن یا با حریف شبیه‌سازی‌شده)
-# ============================================================
 async def _resolve_clan_war(bot, alliance_a, participants_a, alliance_b, participants_b):
-    """اگر alliance_b برابر None باشد یعنی حریف شبیه‌سازی‌شده است."""
     profile_a = _get_clan_profile(alliance_a)
     power_a = len(participants_a) * 30 + profile_a["rank_index"] * 15 + random.randint(-20, 20)
 
@@ -352,7 +337,6 @@ async def _apply_clan_result(bot, alliance_id, participants, won, opponent_name)
 
 
 async def clan_war_matching_job(context: ContextTypes.DEFAULT_TYPE):
-    """هر چند دقیقه صدا زده می‌شود: کلن‌های هم‌رتبه را به هم وصل می‌کند یا بعد از timeout با حریف شبیه‌سازی‌شده می‌جنگاند."""
     _ensure_tables()
     now = int(time.time())
 
@@ -402,9 +386,6 @@ async def clan_war_matching_job(context: ContextTypes.DEFAULT_TYPE):
                 await _resolve_clan_war(context.bot, cid, participants, None, None)
 
 
-# ============================================================
-#   تورنمنت ماهانه‌ی کلن‌ها
-# ============================================================
 async def clan_tournament_job(context: ContextTypes.DEFAULT_TYPE):
     _ensure_tables()
     with get_conn() as conn:
@@ -444,7 +425,6 @@ async def clan_tournament_job(context: ContextTypes.DEFAULT_TYPE):
             }
         total_contribution = sum(contributions.get(uid, 0) for uid in members)
 
-        # ۶۰٪ مساوی بین همه‌ی اعضا (چون همه بخشی از کلن هستن)، ۴۰٪ متناسب با مشارکت واقعی در بردها
         equal_pool = total_reward * 0.6
         weighted_pool = total_reward * 0.4
         equal_share = equal_pool / len(members)
@@ -456,7 +436,6 @@ async def clan_tournament_job(context: ContextTypes.DEFAULT_TYPE):
                 share += weighted_pool * (contributions.get(uid, 0) / total_contribution)
             payouts[uid] = round(share, 2)
 
-        # به‌خاطر رند شدن، مابه‌التفاوت کوچیک احتمالی رو به بیشترین مشارکت‌کننده می‌دیم تا جمع دقیقاً total_reward بشه
         diff = round(total_reward - sum(payouts.values()), 2)
         if diff and payouts:
             top_contributor = max(members, key=lambda uid: contributions.get(uid, 0))
@@ -488,9 +467,6 @@ async def clan_tournament_job(context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"تورنمنت ماهانه‌ی کلن‌ها برگزار شد. فصل جدید: {new_season}")
 
 
-# ============================================================
-#   دیسپچر
-# ============================================================
 CLANWAR_CALLBACKS = {
     "menu_clanwar2": clanwar_menu_callback,
     "clanwar_join": clanwar_join_callback,
