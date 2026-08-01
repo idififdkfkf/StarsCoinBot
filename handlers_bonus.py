@@ -2,18 +2,9 @@
 """
 handlers_bonus.py — قابلیت‌های پاداشی و ویژه‌ی ربات LIBER (فایل جدا)
 ================================================================
-این فایل کاملاً جداست و باید کنار main.py قرار بگیرد. جدول‌های خودش را
-در اولین استفاده خودکار می‌سازد (نیازی به تغییر database.py نیست).
-
 شامل ۶ قابلیت:
-    👑 دکمه‌ی مخفی VIP        فقط در پروفایل کاربران دارای اشتراک دیده می‌شود؛
-                             یک پاداش روزانه‌ی اضافی (جدا از ماموریت اجباری) می‌دهد.
-    🎰 گردونه‌ی شانس بزرگ      شرط LIBER، ۷ نتیجه‌ی ممکن با احتمال‌های متفاوت.
-    🏆 رتبه‌بندی دعوت ماهانه   هر ماه خودکار به پردعوت‌کننده‌ی برتر جایزه می‌دهد.
-    🎁 کد هدیه                ادمین می‌سازد، کاربران با کد یک‌بار جایزه می‌گیرند.
-    🎖 دستاوردها               مدال برای کارهای خاص (اولین اشتراک، ۱۰ برد پیاپی و...).
-    🕵️ VIP مخفی برای خریداران بزرگ   بعد از عبور از آستانه‌ی خرید استارز، خودکار
-                             پیام دعوت ویژه دریافت می‌کنند (بدون دکمه — کاملاً خودکار).
+    👑 دکمه‌ی مخفی VIP، 🎰 گردونه‌ی شانس بزرگ، 🏆 رتبه‌بندی دعوت ماهانه،
+    🎁 کد هدیه، 🎖 دستاوردها، 🕵️ VIP مخفی برای خریداران بزرگ.
 """
 import time
 import calendar
@@ -32,13 +23,8 @@ from main import (
 
 logger = logging.getLogger("LIBER.bonus")
 
-# ============================================================
-#   تنظیمات محلی
-# ============================================================
 VIP_DAILY_BONUS_LIBER = {"normal": 15, "dragon": 35, "liberi": 70}
 
-# تورنمنت مخفی VIP: کاملاً پنهانه، فقط مشترکین می‌بیننش. هر بار پاداش روزانه‌ی VIP رو
-# می‌گیرن ۱ امتیاز فصلی می‌گیرن؛ هر ۳۰ روز به ۳ نفر برتر جایزه‌ی بزرگ می‌ده.
 VIP_TOURNAMENT_INTERVAL_SECONDS = 30 * 86400
 VIP_TOURNAMENT_REWARDS = {1: 1000, 2: 600, 3: 400}
 
@@ -46,7 +32,7 @@ WHEEL_MIN_BET = 10
 WHEEL_OUTCOMES = [0, 0.5, 1, 1.5, 2, 5, 10]
 WHEEL_WEIGHTS = [20, 20, 20, 15, 15, 7, 3]
 
-WHALE_STARS_THRESHOLD = 150   # مجموع استارز خرج‌شده برای فعال‌شدن VIP مخفی
+WHALE_STARS_THRESHOLD = 150
 WHALE_INVITE_TEXT = (
     "🕵️ یک پیام ویژه برای شما!\n\n"
     "شما جزو بزرگ‌ترین حامیان LIBER هستید 🙏 به همین‌خاطر به کانال خصوصی VIP دعوت شدید.\n"
@@ -61,9 +47,6 @@ ACHIEVEMENTS = {
 }
 
 
-# ============================================================
-#   جداول محلی (idempotent، فقط یک‌بار ساخته می‌شوند)
-# ============================================================
 _tables_ready = False
 
 
@@ -141,9 +124,6 @@ def _ensure_tables():
     _tables_ready = True
 
 
-# ============================================================
-#   دستاوردها (توابع کمکی مشترک)
-# ============================================================
 def _grant_achievement(user_id, key):
     _ensure_tables()
     with get_conn() as conn:
@@ -167,12 +147,7 @@ async def _notify_achievement(bot, user_id, key):
         pass
 
 
-# ============================================================
-#   ۱) دکمه‌ی مخفی VIP — فقط در پروفایل کاربران مشترک دیده می‌شود
-# ============================================================
 def vip_bonus_button_rows(user_id):
-    """اگر کاربر اشتراک فعال دارد، ردیف‌های دکمه‌ی مخفی (پاداش روزانه + تورنمنت مخفی) برمی‌گرداند؛
-    در غیر این صورت None (یعنی این دکمه‌ها اصلاً برای بقیه دیده نمی‌شوند)."""
     tier_key = get_active_subscription_tier(user_id)
     if not tier_key:
         return None
@@ -222,7 +197,6 @@ async def vip_secret_bonus_callback(update: Update, context: ContextTypes.DEFAUL
 
 
 async def vip_tournament_secret_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """کاملاً پنهانه — فقط از پروفایل مشترکین قابل‌دسترسه، جایی دیگه دیده نمی‌شه."""
     _ensure_tables()
     q = update.callback_query
     user_id = q.from_user.id
@@ -292,9 +266,6 @@ async def vip_tournament_reward_job(context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"تورنمنت مخفی VIP برگزار شد. فصل جدید: {new_season}")
 
 
-# ============================================================
-#   ۲) گردونه‌ی شانس بزرگ
-# ============================================================
 def _wheel_stepper_keyboard(amount):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("-10", callback_data="wheel_bet:-10"),
@@ -350,9 +321,6 @@ async def wheel_spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await q.edit_message_text(text, reply_markup=_wheel_stepper_keyboard(WHEEL_MIN_BET))
 
 
-# ============================================================
-#   ۳) رتبه‌بندی دعوت ماهانه
-# ============================================================
 REFERRAL_MONTHLY_REWARD = 500
 
 
@@ -362,7 +330,6 @@ def _month_key(ts=None):
 
 
 def _month_bounds(month_key):
-    """(start_ts, end_ts) نیمه‌بازِ یک ماه تقویمی میلادی (UTC) بر اساس month_key='YYYY-MM'."""
     year, month = map(int, month_key.split("-"))
     start = calendar.timegm((year, month, 1, 0, 0, 0, 0, 0, 0))
     if month == 12:
@@ -399,12 +366,11 @@ async def referral_top_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def referral_monthly_reward_job(context: ContextTypes.DEFAULT_TYPE):
-    """باید هر روز صدا زده شود؛ خودش تشخیص می‌دهد ماه قبل هنوز جایزه نگرفته یا نه."""
     _ensure_tables()
-    prev_month_key = _month_key(time.time() - 86400 * 2)  # ماه قبل (بی‌خطر نسبت به لبه‌ی ماه)
+    prev_month_key = _month_key(time.time() - 86400 * 2)
     current_month_key = _month_key()
     if prev_month_key == current_month_key:
-        return  # هنوز داخل همون ماهیم، چیزی برای تسویه نیست
+        return
 
     with get_conn() as conn:
         already_paid = conn.execute(
@@ -440,9 +406,6 @@ async def referral_monthly_reward_job(context: ContextTypes.DEFAULT_TYPE):
             pass
 
 
-# ============================================================
-#   ۴) کد هدیه
-# ============================================================
 async def giftcode_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -486,7 +449,6 @@ async def _do_redeem_giftcode(update, context, raw_text):
 
 
 async def admin_create_giftcode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """برای پنل ادمین: شروع مراحل ساخت کد هدیه."""
     q = update.callback_query
     if q.from_user.id not in ADMIN_IDS:
         await q.answer("⛔ دسترسی غیرمجاز.", show_alert=True)
@@ -527,9 +489,6 @@ async def _do_admin_create_giftcode(update, context, raw_text):
     await update.message.reply_text(f"✅ کد «{code}» ساخته شد: {reward} LIBER × {max_uses} استفاده")
 
 
-# ============================================================
-#   ۵) دستاوردها
-# ============================================================
 async def achievements_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _ensure_tables()
     q = update.callback_query
@@ -551,13 +510,11 @@ async def achievements_menu_callback(update: Update, context: ContextTypes.DEFAU
 
 
 async def check_first_subscription_achievement(user_id, bot):
-    """صدا زده می‌شود بعد از هر خرید موفق اشتراک (توسط main.py). bot: context.bot یا هر آبجکت مشابه با send_message."""
     if _grant_achievement(user_id, "first_subscription"):
         await _notify_achievement(bot, user_id, "first_subscription")
 
 
 async def check_win_streak_achievement(user_id, streak, bot):
-    """صدا زده می‌شود بعد از هر برد در رقابت آنلاین (توسط handlers_competition.py)."""
     if streak >= 10 and _grant_achievement(user_id, "win_streak_10"):
         await _notify_achievement(bot, user_id, "win_streak_10")
 
@@ -567,11 +524,7 @@ async def check_first_withdraw_achievement(user_id, bot):
         await _notify_achievement(bot, user_id, "first_withdraw")
 
 
-# ============================================================
-#   ۶) VIP مخفی برای خریداران بزرگ (کاملاً خودکار، بدون دکمه)
-# ============================================================
 async def check_whale_status(user_id, bot):
-    """صدا زده می‌شود بعد از هر خرید موفق اشتراک. کاملاً پنهانه — هیچ دکمه‌ای نداره. bot: context.bot."""
     _ensure_tables()
     with get_conn() as conn:
         already = conn.execute("SELECT 1 FROM whale_status WHERE user_id = ?", (user_id,)).fetchone()
@@ -599,24 +552,21 @@ async def check_whale_status(user_id, bot):
             pass
 
 
-# ============================================================
-#   دیسپچر
-# ============================================================
+async def _noop(update, context):
+    await update.callback_query.answer()
+
+
 BONUS_CALLBACKS = {
     "vip_secret_bonus": vip_secret_bonus_callback,
     "vip_tournament_secret": vip_tournament_secret_callback,
     "menu_wheel": wheel_menu_callback,
     "wheel_spin": wheel_spin_callback,
-    "wheel_noop": lambda u, c: _noop(u, c),
+    "wheel_noop": _noop,
     "menu_referral_top": referral_top_callback,
     "menu_giftcode": giftcode_menu_callback,
     "menu_achievements": achievements_menu_callback,
     "giftcode_admin_create": admin_create_giftcode_callback,
 }
-
-
-async def _noop(update, context):
-    await update.callback_query.answer()
 
 
 async def bonus_callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
