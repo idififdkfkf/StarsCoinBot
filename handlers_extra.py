@@ -2,16 +2,18 @@
 """
 handlers_extra.py — قابلیت‌های اضافه‌ی ربات LIBER (فایل جدا)
 ================================================================
-این فایل کاملاً جداست و باید کنار main.py قرار بگیرد. main.py در
-لحظه‌ی نیاز (وقتی کاربر روی یکی از دکمه‌های این بخش‌ها بزند) این فایل
-را import می‌کند — نیازی به تغییر main.py برای فعال‌سازی نیست.
+این فایل کاملاً جداست و باید کنار main.py قرار بگیرد.
 
 شامل ۱۰ قابلیت:
-    🌍 کشور و ساختمان        🤝 اتحاد/کلن + جنگ کلن
-    💼 شغل                   🏷 مزایده
-    🔬 تحقیقات شخصی          🛡 دفاع شخصی
-    🌌 اکتشاف                🤖 مشاور هوشمند
-    📰 اخبار جهان            🎟 پیش‌بینی قیمت (شرط روی صعود/نزول)
+    🌍 کشور و ساختمان (+ تغییر نام)     🤝 اتحاد/کلن + جنگ کلن (+ جستجو/آگهی/بیو)
+    💼 شغل                              🏷 مزایده
+    🔬 تحقیقات شخصی                     🛡 دفاع شخصی
+    🌌 اکتشاف                           🤖 مشاور هوشمند
+    📰 اخبار جهان                       🎟 پیش‌بینی قیمت
+
+قابلیت‌های «تغییر نام کشور» و «جستجو/آگهی/بیوی اتحاد» در فایل جداگانه‌ی
+handlers_country_alliance.py پیاده‌سازی شده‌اند (چون جدول‌های اضافه‌ی
+خودشان را دارند) — این فایل فقط دکمه‌های ورودی به آن‌ها را نشان می‌دهد.
 """
 import random
 import logging
@@ -34,9 +36,6 @@ from main import get_conn
 import time
 
 
-# ============================================================
-#  تنظیمات محلی این ماژول (خودکفا، بدون وابستگی به config.py اصلی)
-# ============================================================
 # ============================================================
 #   کشور و ساختمان‌ها
 # ============================================================
@@ -69,7 +68,7 @@ JOBS = {
 WORK_COOLDOWN_SECONDS = 20 * 3600
 
 # ============================================================
-#   جنگ کلن
+#   جنگ کلن (نمایشی/ساده - جنگ کلن رتبه‌بندی‌شده در handlers_clanwar.py است)
 # ============================================================
 CLAN_WAR_MIN_REWARD = 100
 CLAN_WAR_MAX_REWARD = 400
@@ -117,9 +116,6 @@ PREDICTION_BET = 30
 PREDICTION_MULTIPLIER = 1.8
 
 
-# ============================================================
-#  توابع دیتابیس محلی این ماژول (روی جداول خودشان کار می‌کنند)
-# ============================================================
 # ---------------------------------------------------------------
 #  کشور و ساختمان‌ها
 # ---------------------------------------------------------------
@@ -336,7 +332,7 @@ def resolve_predictions(new_price, multiplier):
 
 
 # ---------------------------------------------------------------
-#  آمار جهانی (برای اخبار جهان / مشاور هوشمند)
+#  آمار جهانی
 # ---------------------------------------------------------------
 def get_richest_user():
     with get_conn() as conn:
@@ -351,9 +347,6 @@ def count_countries():
 # ============================================================
 #  دکمه‌های محلی این ماژول
 # ============================================================
-# ---------------------------------------------------------------
-#  کشور و ساختمان
-# ---------------------------------------------------------------
 def country_no_country_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🌍 ساخت کشور جدید", callback_data="country_found")],
@@ -364,18 +357,18 @@ def country_no_country_keyboard():
 def country_view_keyboard():
     rows = [[InlineKeyboardButton(f"🏗 {name} ({BUILDING_COSTS[key]} LIBER)", callback_data=f"country_build:{key}")]
             for key, name in BUILDING_NAMES.items()]
+    rows.append([InlineKeyboardButton("✏️ تغییر نام کشور", callback_data="country_rename_start")])
     rows.append([InlineKeyboardButton("🪖 تسهیلات نظامی", callback_data="menu_military")])
     rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")])
     return InlineKeyboardMarkup(rows)
 
 
-# ---------------------------------------------------------------
-#  اتحاد / کلن
-# ---------------------------------------------------------------
 def alliance_no_alliance_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🤝 ساخت اتحاد جدید", callback_data="alliance_create")],
         [InlineKeyboardButton("🔍 پیوستن به اتحاد (با نام)", callback_data="alliance_join")],
+        [InlineKeyboardButton("🔎 جستجو با اسم/کد", callback_data="alliance_search_start")],
+        [InlineKeyboardButton("🌍 اتحادهای عمومی (آگهی‌دار)", callback_data="alliance_public_list")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")],
     ])
 
@@ -383,13 +376,12 @@ def alliance_no_alliance_keyboard():
 def alliance_view_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("⚔️ جنگ کلن (رتبه‌بندی‌شده)", callback_data="menu_clanwar2")],
+        [InlineKeyboardButton("📢 ثبت آگهی عضوگیری (۱۰۰ LIBER/۱ساعت)", callback_data="alliance_ad_post")],
+        [InlineKeyboardButton("📝 تغییر بیوی اتحاد", callback_data="alliance_bio_start")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")],
     ])
 
 
-# ---------------------------------------------------------------
-#  شغل
-# ---------------------------------------------------------------
 def jobs_keyboard(current_job_key):
     rows = []
     for key, job in JOBS.items():
@@ -401,9 +393,6 @@ def jobs_keyboard(current_job_key):
     return InlineKeyboardMarkup(rows)
 
 
-# ---------------------------------------------------------------
-#  مزایده
-# ---------------------------------------------------------------
 def auction_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("💰 پیشنهاد بده", callback_data="auction_bid")],
@@ -411,9 +400,6 @@ def auction_keyboard():
     ])
 
 
-# ---------------------------------------------------------------
-#  تحقیقات / دفاع / اکتشاف
-# ---------------------------------------------------------------
 def research_keyboard(can_upgrade):
     rows = []
     if can_upgrade:
@@ -436,17 +422,12 @@ def explore_keyboard():
     ])
 
 
-# ---------------------------------------------------------------
-#  پیش‌بینی قیمت
-# ---------------------------------------------------------------
 def predict_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📈 صعودی", callback_data="predict_up"),
          InlineKeyboardButton("📉 نزولی", callback_data="predict_down")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")],
     ])
-
-
 
 
 logger = logging.getLogger("LIBER.extra")
@@ -593,10 +574,19 @@ async def _do_create_alliance(update, context, raw_text):
         await update.message.reply_text(f"❌ برای ساخت کلن به {ALLIANCE_CREATE_COST} LIBER نیاز داری.")
         return
     update_balance(user_id, liber=-ALLIANCE_CREATE_COST)
-    create_alliance(name, user_id)
+    alliance_id = create_alliance(name, user_id)
     log_transaction(user_id, "CREATE_ALLIANCE", name)
+
+    # کد اختصاصی اتحاد رو هم همین‌جا می‌سازیم (برای جستجوی بعدی)
+    try:
+        import handlers_country_alliance
+        code = handlers_country_alliance._ensure_join_code(alliance_id)
+        code_note = f"\n🔑 کد اتحاد: {code}" if code else ""
+    except Exception:
+        code_note = ""
+
     await update.message.reply_text(
-        f"🤝 اتحاد «{name}» ساخته شد! (-{ALLIANCE_CREATE_COST} LIBER)", reply_markup=back_keyboard()
+        f"🤝 اتحاد «{name}» ساخته شد! (-{ALLIANCE_CREATE_COST} LIBER){code_note}", reply_markup=back_keyboard()
     )
 
 
@@ -723,8 +713,6 @@ def _ensure_active_auction():
     if not auction or auction["ends_at"] <= now:
         if auction and auction["ends_at"] <= now:
             close_auction(auction["auction_id"])
-            if auction["current_winner"]:
-                pass  # برنده‌ی نهایی، آیتم رو می‌گیرد (فقط جنبه‌ی نمایشی/فان دارد)
         item = random.choice(AUCTION_ITEMS)
         auction = create_auction(item, AUCTION_START_PRICE, AUCTION_DURATION_SECONDS)
     return auction
@@ -990,7 +978,6 @@ async def predict_down_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def resolve_predictions_job(context: ContextTypes.DEFAULT_TYPE):
-    """هر بار که بازار نوسان می‌کند صدا زده می‌شود (همراه با fluctuate_market)."""
     new_price = get_market_price()
     results = resolve_predictions(new_price, PREDICTION_MULTIPLIER)
     for user_id, won, payout in results:
@@ -1031,7 +1018,6 @@ EXTRA_CALLBACKS = {
 
 
 async def extra_callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """اگر callback مربوط به یکی از قابلیت‌های اضافه باشد آن را پردازش می‌کند و True برمی‌گرداند."""
     data = update.callback_query.data
     if data in EXTRA_CALLBACKS:
         await EXTRA_CALLBACKS[data](update, context)
@@ -1046,7 +1032,6 @@ async def extra_callback_router(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def extra_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """اگر پیام متنی مربوط به یک مرحله‌ی چندقسمتیِ قابلیت‌های اضافه باشد پردازش می‌کند."""
     awaiting = context.user_data.get("awaiting")
     if not awaiting:
         return False
