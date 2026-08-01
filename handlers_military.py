@@ -2,15 +2,6 @@
 """
 handlers_military.py — تسهیلات نظامی (فایل جدا)
 ================================================================
-بخش «ساخت» این سیستم که اعداد دقیقش مشخص بود: انواع سرباز و بدنه‌ی
-جنگنده. فایل کاملاً جداست و جدول خودش رو در اولین استفاده می‌سازه.
-
-⚠️ توجه مهم: بخش «حمله‌ی موج‌به‌موج با هدف‌گیری جهت جغرافیایی و شمارش
-معکوس ۳دقیقه‌ای» و «بیانه‌ی عمومی با لایک/پاسخ» در این نسخه ساخته نشده
-چون این دو تا خودشون معادل دو سیستم بزرگ جدا هستن که برای ساختن درست و
-تست‌شده‌شون نیاز به یه دور جداگونه دارن. همین الان که آماده بودید بگید
-تا اون‌ها رو هم دقیقاً با همین کیفیت (تست کامل، بدون باگ) بسازم.
-
 شامل:
     🪖 ساخت سرباز (۵ نوع، هرکدوم با قیمت مشخص)
     ✈️ ساخت جنگنده (انتخاب نوع بدنه از ۴ گزینه)
@@ -25,9 +16,6 @@ from main import get_conn, get_user, update_balance, log_transaction, back_keybo
 
 logger = logging.getLogger("LIBER.military")
 
-# ============================================================
-#   تنظیمات — قیمت‌ها دقیقاً طبق چیزی که گفته شد
-# ============================================================
 SOLDIER_TYPES = {
     "normal": {"name": "🪖 سرباز عادی", "batch": 100, "cost": 700},
     "army": {"name": "⚔️ سرباز ارتشی", "batch": 100, "cost": 900},
@@ -44,13 +32,9 @@ JET_BODY_TYPES = {
     "rare_stealth": {"name": "💎 بدنه غیرردیاب کمیاب", "cost": 2500, "power": 34},
 }
 
-# ضریب قدرت هر واحد سرباز، برای محاسبه‌ی امتیاز نظامی کلی
 SOLDIER_POWER = {"normal": 1, "army": 1.5, "navy": 1.5, "commander": 6, "special": 2.2, "secret": 3}
 
 
-# ============================================================
-#   جداول محلی
-# ============================================================
 _tables_ready = False
 
 
@@ -95,7 +79,6 @@ def _get_jet_counts(user_id):
 
 
 def get_military_power(user_id):
-    """مجموع امتیاز نظامی: سربازها بر اساس تعداد×ضریب + جنگنده‌ها بر اساس قدرت بدنه‌شون."""
     _ensure_tables()
     soldiers = _get_soldier_counts(user_id)
     jets = _get_jet_counts(user_id)
@@ -104,9 +87,6 @@ def get_military_power(user_id):
     return round(power, 1)
 
 
-# ============================================================
-#   منوی اصلی تسهیلات نظامی
-# ============================================================
 def _military_menu_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🪖 ساخت سرباز", callback_data="military_soldier_menu"),
@@ -148,9 +128,6 @@ async def military_menu_callback(update: Update, context: ContextTypes.DEFAULT_T
     await q.edit_message_text("\n".join(lines), reply_markup=_military_menu_keyboard())
 
 
-# ============================================================
-#   ساخت سرباز
-# ============================================================
 def _soldier_type_keyboard():
     rows = [
         [InlineKeyboardButton(f"{s['name']} — {s['cost']} LIBER / {s['batch']} نفر", callback_data=f"military_soldier_pick:{key}")]
@@ -234,9 +211,6 @@ async def military_soldier_confirm_callback(update: Update, context: ContextType
     )
 
 
-# ============================================================
-#   ساخت جنگنده (انتخاب بدنه)
-# ============================================================
 def _jet_body_keyboard():
     rows = [
         [InlineKeyboardButton(f"{j['name']} — {j['cost']} LIBER", callback_data=f"military_jet_pick:{key}")]
@@ -283,14 +257,11 @@ async def military_jet_pick_callback(update: Update, context: ContextTypes.DEFAU
     )
 
 
-# ============================================================
-#   دیسپچر
-# ============================================================
 MILITARY_CALLBACKS = {
     "menu_military": military_menu_callback,
     "military_soldier_menu": military_soldier_menu_callback,
     "military_jet_menu": military_jet_menu_callback,
-    "military_noop": None,  # فقط برای جلوگیری از کرش روی دکمه‌ی نمایشی وسط استپر
+    "military_noop": None,
 }
 
 
