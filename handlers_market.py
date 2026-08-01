@@ -2,19 +2,11 @@
 """
 handlers_market.py — مزایده‌ی نظامی بین کاربران (فایل جدا)
 ================================================================
-خرید/فروش سرباز و جنگنده بین کاربران با مزایده‌ی صعودی واقعی.
-
-⚙️ تصمیم‌های گرفته‌شده برای جاهای مبهم:
-  • این یه «مزایده‌ی صعودی» واقعیه (نه فروش فوری با قیمت ثابت): فروشنده
-    قیمت شروع رو تعیین می‌کنه، خریدارها روی هم پیشنهاد بالاتر می‌دن،
-    در پایان مدت، بالاترین پیشنهاد برنده می‌شه.
-  • کارمزد لیست کردن (از فروشنده گرفته می‌شه، همون اول، برنگشتنیه):
-      ۲۴ ساعت = ۵۰ LIBER | ۴۸ ساعت = ۱۰۰ LIBER
-      ۷۲ ساعت = ۱۵۰ LIBER | ۹۶ ساعت = ۲۰۰ LIBER
-  • حداقل افزایش هر پیشنهاد نسبت به قبلی: ۲۰ LIBER
-  • آیتم (سرباز/جنگنده) همون لحظه‌ی ثبت مزایده از موجودی فروشنده کم
-    می‌شه و «امانت» پیش ربات می‌مونه، تا کسی نتونه هم بفروشدش هم نگهش داره.
-  • اگه هیچ پیشنهادی ثبت نشه، آیتم بدون کارمزد اضافه به فروشنده برمی‌گرده.
+  • مزایده‌ی صعودی واقعی (نه فروش فوری)
+  • کارمزد لیست کردن: ۲۴س=۵۰ | ۴۸س=۱۰۰ | ۷۲س=۱۵۰ | ۹۶س=۲۰۰ LIBER
+  • حداقل افزایش هر پیشنهاد: ۲۰ LIBER
+  • آیتم لحظه‌ی ثبت مزایده امانت پیش ربات می‌مونه
+  • بدون پیشنهاد → آیتم بدون کارمزد اضافه برمی‌گرده
 """
 import time
 import logging
@@ -27,17 +19,11 @@ from main import get_conn, get_user, update_balance, log_transaction, back_keybo
 
 logger = logging.getLogger("LIBER.market")
 
-# ============================================================
-#   تنظیمات
-# ============================================================
-LISTING_DURATIONS = {24: 50, 48: 100, 72: 150, 96: 200}  # {ساعت: کارمزد لیبر}
+LISTING_DURATIONS = {24: 50, 48: 100, 72: 150, 96: 200}
 MIN_BID_INCREMENT = 20
-MARKET_SWEEP_INTERVAL_SECONDS = 300  # هر ۵ دقیقه چک می‌شه کدوم مزایده تموم شده
+MARKET_SWEEP_INTERVAL_SECONDS = 300
 
 
-# ============================================================
-#   جداول محلی
-# ============================================================
 _tables_ready = False
 
 
@@ -90,9 +76,6 @@ def _item_label(listing):
         return f"۱ جنگنده ({name})"
 
 
-# ============================================================
-#   منوی اصلی بازار
-# ============================================================
 def _market_menu_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📦 لیست کردن سرباز برای فروش", callback_data="market_sell_soldier_menu"),
@@ -113,9 +96,6 @@ async def market_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
 
-# ============================================================
-#   لیست کردن سرباز برای فروش
-# ============================================================
 def _sell_soldier_type_keyboard():
     import handlers_military as hm
     rows = [[InlineKeyboardButton(s["name"], callback_data=f"market_sell_soldier_pick:{key}")]
@@ -250,9 +230,6 @@ async def market_duration_callback(update: Update, context: ContextTypes.DEFAULT
     )
 
 
-# ============================================================
-#   لیست کردن جنگنده برای فروش
-# ============================================================
 def _sell_jet_type_keyboard(user_id):
     import handlers_military as hm
     owned = hm._get_jet_counts(user_id)
@@ -288,9 +265,6 @@ async def market_sell_jet_pick_callback(update: Update, context: ContextTypes.DE
     await q.edit_message_text("قیمت شروع مزایده رو به LIBER بفرست:")
 
 
-# ============================================================
-#   مرور و پیشنهاد
-# ============================================================
 def _listing_view_keyboard(listing_id):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("💰 پیشنهاد بده", callback_data=f"market_bid:{listing_id}")],
@@ -389,7 +363,6 @@ async def _do_market_bid(update, context, raw_text):
         await update.message.reply_text("❌ LIBER کافی نداری.")
         return
 
-    # پیشنهاددهنده‌ی قبلی رو رفاند کن
     if listing["current_bidder"]:
         update_balance(listing["current_bidder"], liber=listing["current_price"])
         try:
@@ -409,9 +382,6 @@ async def _do_market_bid(update, context, raw_text):
     await update.message.reply_text(f"✅ پیشنهادت ({amount} LIBER) ثبت شد!", reply_markup=back_keyboard())
 
 
-# ============================================================
-#   حل‌وفصل مزایده‌های تمام‌شده
-# ============================================================
 async def market_sweep_job(context: ContextTypes.DEFAULT_TYPE):
     _ensure_tables()
     now = int(time.time())
@@ -425,12 +395,10 @@ async def market_sweep_job(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _resolve_listing(listing, bot):
-    import handlers_military as hm
     with get_conn() as conn:
         conn.execute("UPDATE market_listings SET status = 'sold' WHERE listing_id = ?", (listing["listing_id"],))
 
     if not listing["current_bidder"]:
-        # هیچ پیشنهادی نبود؛ آیتم بدون هزینه‌ی اضافه به فروشنده برمی‌گرده
         _return_item_to(listing["seller_id"], listing)
         try:
             await bot.send_message(
@@ -440,7 +408,6 @@ async def _resolve_listing(listing, bot):
             pass
         return
 
-    # برنده آیتم رو می‌گیره، فروشنده پول رو
     _give_item_to(listing["current_bidder"], listing)
     update_balance(listing["seller_id"], liber=listing["current_price"])
     log_transaction(listing["seller_id"], "MARKET_SOLD", f"listing={listing['listing_id']} price={listing['current_price']}")
@@ -482,9 +449,6 @@ def _give_item_to(user_id, listing):
     _return_item_to(user_id, listing)
 
 
-# ============================================================
-#   دیسپچر
-# ============================================================
 MARKET_CALLBACKS = {
     "menu_military_market": market_menu_callback,
     "market_sell_soldier_menu": market_sell_soldier_menu_callback,
