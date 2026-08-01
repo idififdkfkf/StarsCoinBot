@@ -21,60 +21,31 @@ LIBER Telegram Bot — main.py
 # ============================================================
 #  SECTION 1: CONFIG — تنظیمات، تعرفه‌ها، رنک‌ها
 # ============================================================
-# -*- coding: utf-8 -*-
-"""
-تنظیمات کلی ربات LIBER
-همه‌ی مقادیر قابل تنظیم ربات اینجا جمع شده تا نیازی به گشتن توی کل کد نباشه.
-"""
-
-# ============================================================
-#   تنظیمات پایه
-# ============================================================
-BOT_TOKEN = "8818731091:AAHD4vNWYdFfDD6C0__60vsd4hCDumRuB-Y"          # توکن ربات از BotFather
+BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"          # توکن ربات از BotFather
 ADMIN_IDS = [123456789]                     # آیدی عددی ادمین‌ها (با @userinfobot بگیر)
 DB_PATH = "liber.db"
 
-# دستور مخفی فعال‌سازی پنل مدیریت. فقط برای کسانی که هم در ADMIN_IDS هستن
-# و هم دقیقاً همین متن رو بفرستن، پنل باز می‌شه. برای بقیه هیچ اتفاقی نمی‌افته
-# (نه خطا، نه پیام - انگار همچین دستوری وجود نداره).
-ADMIN_SECRET_COMMAND = "/admin"
+ADMIN_SECRET_COMMAND = "/root_gate_7719"
 
-# ============================================================
-#   عضویت اجباری
-# ============================================================
 FORCE_JOIN_CHANNELS = [
     {"id": "@Libercoin1", "title": "کانال LIBER", "url": "https://t.me/Libercoin1"},
-    # برای افزودن کانال یا گروه دیگر، یک آیتم دیگر به همین شکل اضافه کن:
-    # {"id": "@your_channel_2", "title": "کانال دوم", "url": "https://t.me/your_channel_2"},
 ]
 
-# ============================================================
-#   بازار لیبر (نوسان ساعتی)
-# ============================================================
-MARKET_BASE_PRICE = 100                 # قیمت پایه‌ی هر لیبر بر حسب سکه
+MARKET_BASE_PRICE = 100
 BUY_FEE_PERCENT = 2
 SELL_FEE_PERCENT = 2
-MARKET_FLUCTUATION_RANGE = (-0.07, 0.07)     # حداکثر نوسان در هر آپدیت
-MARKET_UPDATE_INTERVAL_SECONDS = 3600        # هر ۱ ساعت
+MARKET_FLUCTUATION_RANGE = (-0.07, 0.07)
+MARKET_UPDATE_INTERVAL_SECONDS = 3600
 
-# ============================================================
-#   بانک
-# ============================================================
-BANK_INTEREST_PERCENT = 1.5     # سود روزانه‌ی سپرده
-LOAN_INTEREST_PERCENT = 5       # کارمزد وام
-MAX_LOAN_MULTIPLIER = 3         # سقف وام بر اساس سطح کاربر
-LOAN_BASE_PER_LEVEL = 100       # واحد پایه‌ی سقف وام به ازای هر سطح
+BANK_INTEREST_PERCENT = 1.5
+LOAN_INTEREST_PERCENT = 5
+MAX_LOAN_MULTIPLIER = 3
+LOAN_BASE_PER_LEVEL = 100
 
-# ============================================================
-#   تجربه و سطح
-# ============================================================
 XP_PER_LEVEL = 100
 DAILY_MISSION_XP = 20
 DAILY_MISSION_LIBER = 8
 
-# ============================================================
-#   صندوق‌ها (Chest)
-# ============================================================
 CHEST_TABLE = {
     "free":    {"cost": {},               "rewards": [("coin", 40, 120), ("liber", 1, 3)]},
     "bronze":  {"cost": {"coin": 350},     "rewards": [("coin", 90, 350), ("liber", 2, 7), ("xp", 8, 18)]},
@@ -83,9 +54,6 @@ CHEST_TABLE = {
     "diamond": {"cost": {"diamond": 25},   "rewards": [("liber", 50, 140), ("diamond", 4, 8), ("medal", 1, 4)]},
 }
 
-# ============================================================
-#   سطوح VIP (با الماس خریداری می‌شن)
-# ============================================================
 VIP_TIERS = {
     "silver":  {"cost_diamond": 50,   "xp_bonus": 1.10, "income_bonus": 1.10},
     "gold":    {"cost_diamond": 150,  "xp_bonus": 1.25, "income_bonus": 1.25},
@@ -93,68 +61,34 @@ VIP_TIERS = {
     "titan":   {"cost_diamond": 1000, "xp_bonus": 2.00, "income_bonus": 2.00},
 }
 
-# ============================================================
-#   اشتراک ویژه با تلگرام استارز (Telegram Stars / XTR)
-#   هر تعرفه شامل دو گزینه‌ی مدت ۳ و ۶ ماهه است.
-# ============================================================
 SUBSCRIPTION_TIERS = {
     "normal": {
-        "title": "🎫 اشتراک عادی",
-        "badge": "🎫",
-        "daily_bonus_percent": 10,
-        "market_fee_discount_percent": 20,
-        "withdraw_fee_discount_percent": 0,
-        "perks": [
-            "۱۰٪ افزایش پاداش ماموریت روزانه",
-            "۲۰٪ تخفیف کارمزد خرید/فروش بازار",
-            "دسترسی به صندوق‌های ویژه",
-        ],
-        "options": {3: 30, 6: 50},   # {ماه: قیمت به استارز}
+        "title": "🎫 اشتراک عادی", "badge": "🎫",
+        "daily_bonus_percent": 10, "market_fee_discount_percent": 20, "withdraw_fee_discount_percent": 0,
+        "perks": ["۱۰٪ افزایش پاداش ماموریت روزانه", "۲۰٪ تخفیف کارمزد خرید/فروش بازار", "دسترسی به صندوق‌های ویژه"],
+        "options": {3: 30, 6: 50},
     },
     "dragon": {
-        "title": "🐉 اشتراک اژدها",
-        "badge": "🐉",
-        "daily_bonus_percent": 25,
-        "market_fee_discount_percent": 50,
-        "withdraw_fee_discount_percent": 25,
-        "perks": [
-            "۲۵٪ افزایش پاداش ماموریت روزانه",
-            "۵۰٪ تخفیف کارمزد خرید/فروش بازار (نصف)",
-            "۲۵٪ تخفیف کارمزد برداشت TON",
-            "بج ویژه‌ی اژدها 🐉 کنار نامت",
-        ],
+        "title": "🐉 اشتراک اژدها", "badge": "🐉",
+        "daily_bonus_percent": 25, "market_fee_discount_percent": 50, "withdraw_fee_discount_percent": 25,
+        "perks": ["۲۵٪ افزایش پاداش ماموریت روزانه", "۵۰٪ تخفیف کارمزد خرید/فروش بازار (نصف)",
+                  "۲۵٪ تخفیف کارمزد برداشت TON", "بج ویژه‌ی اژدها 🐉 کنار نامت"],
         "options": {3: 50, 6: 80},
     },
     "liberi": {
-        "title": "👑 اشتراک لیبری (VIP برتر)",
-        "badge": "👑",
-        "daily_bonus_percent": 50,
-        "market_fee_discount_percent": 100,
-        "withdraw_fee_discount_percent": 50,
-        "perks": [
-            "۵۰٪ افزایش پاداش ماموریت روزانه",
-            "بدون کارمزد بازار (۱۰۰٪ تخفیف)",
-            "۵۰٪ تخفیف کارمزد برداشت TON + اولویت در صف تایید",
-            "بج طلایی اختصاصی 👑 + دسترسی زودهنگام به رویدادها",
-        ],
+        "title": "👑 اشتراک لیبری (VIP برتر)", "badge": "👑",
+        "daily_bonus_percent": 50, "market_fee_discount_percent": 100, "withdraw_fee_discount_percent": 50,
+        "perks": ["۵۰٪ افزایش پاداش ماموریت روزانه", "بدون کارمزد بازار (۱۰۰٪ تخفیف)",
+                  "۵۰٪ تخفیف کارمزد برداشت TON + اولویت در صف تایید", "بج طلایی اختصاصی 👑 + دسترسی زودهنگام به رویدادها"],
         "options": {3: 100, 6: 135},
     },
 }
 
-# ============================================================
-#   تخفیف پایان ماه (فقط آخرین روز هر ماه فعاله، نه هر روز)
-# ============================================================
 MONTH_END_DISCOUNT_PERCENT = {"normal": 5, "dragon": 10, "liberi": 15}
 
-# ============================================================
-#   رفرال (دعوت دوستان)
-# ============================================================
-REFERRAL_BONUS_NORMAL = 100     # لیبر برای هر دعوت‌شونده‌ی عادی
-REFERRAL_BONUS_PREMIUM = 150    # لیبر برای هر دعوت‌شونده‌ای که کاربر پرمیوم تلگرام است
+REFERRAL_BONUS_NORMAL = 100
+REFERRAL_BONUS_PREMIUM = 150
 
-# ============================================================
-#   برداشت TON
-# ============================================================
 MIN_WITHDRAW_LIBER = 2000
 WITHDRAW_FEE_PERCENT = 5
 WITHDRAW_PENDING_TEXT = (
@@ -162,33 +96,20 @@ WITHDRAW_PENDING_TEXT = (
     "⏳ وضعیت: در حال بررسی — به محض تایید و انجام تراکنش، پیام موفقیت برایتان ارسال می‌شود."
 )
 
-# ============================================================
-#   ضد اسپم
-# ============================================================
-SPAM_WINDOW_SECONDS = 8          # بازه‌ی زمانی بررسی
-SPAM_MAX_ACTIONS = 10            # حداکثر تعداد کلیک/پیام مجاز در بازه
-SPAM_WARN_LIMIT = 3              # تعداد اخطار قبل از بن
+SPAM_WINDOW_SECONDS = 8
+SPAM_MAX_ACTIONS = 10
+SPAM_WARN_LIMIT = 3
 
-# ============================================================
-#   رقابت آنلاین رنک‌بندی‌شده (مثل کالاف)
-# ============================================================
 RANKS = [
-    "🔰 سواپ وان",
-    "🔰 سواپ تو",
-    "🔰 سواپ لجند",
-    "🐉 دراگون",
-    "🐉 دراگون لجند",
-    "🔷 لیبر",
-    "🔷 لیبر لجند",
-    "💎 الماس",
-    "💎 الماسی فول لجند",
+    "🔰 سواپ وان", "🔰 سواپ تو", "🔰 سواپ لجند", "🐉 دراگون", "🐉 دراگون لجند",
+    "🔷 لیبر", "🔷 لیبر لجند", "💎 الماس", "💎 الماسی فول لجند",
 ]
 MAX_RANK_INDEX = len(RANKS) - 1
 
-MATCH_ENTRY_FEE = 15                # هزینه‌ی ورود به هر مسابقه (LIBER)
-MATCH_BASE_REWARD = 30              # جایزه‌ی برد در رنک اول (هر رنک بالاتر ×۲)
-MATCH_QUEUE_CHECK_SECONDS = 120     # هر چند ثانیه صف مسابقه چک شود
-MATCH_BOT_FALLBACK_SECONDS = 300    # بعد از این مدت بدون حریف واقعی، با ربات بازی می‌شود
+MATCH_ENTRY_FEE = 15
+MATCH_BASE_REWARD = 30
+MATCH_QUEUE_CHECK_SECONDS = 120
+MATCH_BOT_FALLBACK_SECONDS = 300
 MATCH_MIN_SECONDS_BETWEEN_STARTS = 10
 
 TOURNAMENT_INTERVAL_SECONDS = 30 * 86400
@@ -199,12 +120,10 @@ COMPETITION_DAILY_MISSION_REWARD = 40
 
 
 def wins_required_for_rank(rank_index: int) -> int:
-    """تعداد برد لازم برای ارتقا از این رنک به رنک بعد."""
     return 10 + rank_index * 5
 
 
 def medals_per_win_for_rank(rank_index: int) -> float:
-    """مدال دریافتی به ازای هر برد در این رنک."""
     return max(5.0, 10 - rank_index * 0.5)
 
 
@@ -215,11 +134,6 @@ def reward_for_rank(rank_index: int) -> int:
 # ============================================================
 #  SECTION 2: DATABASE — لایه‌ی دیتابیس (SQLite)
 # ============================================================
-# -*- coding: utf-8 -*-
-"""
-لایه‌ی دیتابیس ربات LIBER (SQLite)
-تمام تعامل با دیتابیس از این فایل عبور می‌کند تا بقیه‌ی فایل‌ها تمیز بمانند.
-"""
 import sqlite3
 from contextlib import contextmanager
 
@@ -450,9 +364,6 @@ def init_db():
             )
 
 
-# ---------------------------------------------------------------
-#  کاربران
-# ---------------------------------------------------------------
 def get_user(user_id):
     with get_conn() as conn:
         return conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)).fetchone()
@@ -521,9 +432,6 @@ def set_ban(user_id, banned: bool):
         conn.execute("UPDATE users SET is_banned = ? WHERE user_id = ?", (1 if banned else 0, user_id))
 
 
-# ---------------------------------------------------------------
-#  بازار
-# ---------------------------------------------------------------
 def get_market_price():
     with get_conn() as conn:
         row = conn.execute("SELECT price FROM market_state WHERE id = 1").fetchone()
@@ -543,9 +451,6 @@ def fluctuate_market(low, high):
         return price, new_price, change_pct
 
 
-# ---------------------------------------------------------------
-#  بانک
-# ---------------------------------------------------------------
 def bank_deposit(user_id, amount):
     with get_conn() as conn:
         conn.execute(
@@ -611,13 +516,7 @@ def apply_daily_interest(user_id):
         return interest
 
 
-# ---------------------------------------------------------------
-#  ماموریت روزانه‌ی اجباری (گیت ورود به صندوق رایگان و رقابت آنلاین)
-# ---------------------------------------------------------------
 def has_done_daily_mission(user_id) -> bool:
-    """True اگر کاربر ماموریت روزانه‌ی «امروز» (روز تقویمی UTC) را انجام داده باشد.
-    این دقیقاً همان مرز روزی است که daily_mission_callback برای اجازه‌ی claim دوباره استفاده می‌کند،
-    تا هیچ‌وقت بین این تابع (گیت صندوق/رقابت) و منطق claim ناهماهنگی پیش نیاید."""
     with get_conn() as conn:
         row = conn.execute("SELECT last_daily FROM users WHERE user_id = ?", (user_id,)).fetchone()
     if not row or not row["last_daily"]:
@@ -627,7 +526,6 @@ def has_done_daily_mission(user_id) -> bool:
 
 
 def get_active_subscription_tier(user_id):
-    """کلید تعرفه‌ی فعال کاربر (مثلاً 'dragon') یا None اگر اشتراکی فعال نیست/منقضی شده."""
     with get_conn() as conn:
         row = conn.execute(
             "SELECT subscription_tier, subscription_expires FROM users WHERE user_id = ?",
@@ -640,9 +538,6 @@ def get_active_subscription_tier(user_id):
     return row["subscription_tier"]
 
 
-# ---------------------------------------------------------------
-#  برداشت TON
-# ---------------------------------------------------------------
 def create_withdraw_request(user_id, liber_amount, fee, ton_amount, wallet_address):
     with get_conn() as conn:
         cur = conn.execute(
@@ -696,16 +591,12 @@ def reject_withdraw_request(request_id, admin_id):
             (int(time.time()), admin_id, request_id),
         )
         if row:
-            # لیبر به کاربر برگردانده می‌شود چون درخواست رد شده
             conn.execute(
                 "UPDATE users SET liber = liber + ? WHERE user_id = ?",
                 (row["liber_amount"], row["user_id"]),
             )
 
 
-# ---------------------------------------------------------------
-#  اشتراک استارز
-# ---------------------------------------------------------------
 def grant_subscription(user_id, tier, months, stars_amount, charge_id):
     with get_conn() as conn:
         row = conn.execute(
@@ -726,9 +617,6 @@ def grant_subscription(user_id, tier, months, stars_amount, charge_id):
         return new_expiry
 
 
-# ---------------------------------------------------------------
-#  رفرال
-# ---------------------------------------------------------------
 def register_referral(inviter_id, invitee_id, bonus_liber):
     with get_conn() as conn:
         exists = conn.execute(
@@ -756,9 +644,6 @@ def count_referrals(user_id):
         return row["c"] if row else 0
 
 
-# ---------------------------------------------------------------
-#  رقابت آنلاین رنک‌بندی‌شده
-# ---------------------------------------------------------------
 def get_comp_profile(user_id):
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM comp_profile WHERE user_id = ?", (user_id,)).fetchone()
@@ -805,7 +690,6 @@ def comp_all_queued():
 
 
 def comp_record_result(user_id, outcome, medals_gain=0, liber_gain=0):
-    """outcome: 'win' | 'loss' | 'draw'"""
     with get_conn() as conn:
         if outcome == "win":
             conn.execute(
@@ -903,9 +787,6 @@ def all_comp_user_ids():
         return [r["user_id"] for r in conn.execute("SELECT user_id FROM comp_profile").fetchall()]
 
 
-# ---------------------------------------------------------------
-#  آمار برای پنل ادمین
-# ---------------------------------------------------------------
 def get_stats():
     with get_conn() as conn:
         total_users = conn.execute("SELECT COUNT(*) c FROM users").fetchone()["c"]
@@ -930,11 +811,6 @@ def all_user_ids():
 # ============================================================
 #  SECTION 3: KEYBOARDS — دکمه‌های شیشه‌ای
 # ============================================================
-# -*- coding: utf-8 -*-
-"""
-سازنده‌های کیبورد شیشه‌ای (Inline Keyboard)
-تمام تعامل کاربر با ربات از طریق دکمه است، نه دستور متنی.
-"""
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 
@@ -977,6 +853,7 @@ def main_menu_keyboard(is_admin=False):
         [InlineKeyboardButton("🎫 باشگاه مشتریان (۴ ماموریت هفتگی)", callback_data="menu_club")],
         [InlineKeyboardButton("🎯 ماموریت روزانه (اجباری)", callback_data="daily_mission")],
         [InlineKeyboardButton("⚔️ رقابت آنلاین", callback_data="competition_menu")],
+        [InlineKeyboardButton("🎁 گیفت استارز (بوست پست)", callback_data="giftboost_menu")],
         [InlineKeyboardButton("❓ راهنما", callback_data="menu_help")],
     ]
     if is_admin:
@@ -992,6 +869,8 @@ def market_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🟢 خرید لیبر", callback_data="market_buy"),
          InlineKeyboardButton("🔴 فروش لیبر", callback_data="market_sell")],
+        [InlineKeyboardButton("🎚 خرید با استپر", callback_data="market_stepper:buy"),
+         InlineKeyboardButton("🎚 فروش با استپر", callback_data="market_stepper:sell")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")],
     ])
 
@@ -1052,6 +931,7 @@ def admin_withdraw_review_keyboard(request_id):
 def admin_panel_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📤 درخواست‌های برداشت", callback_data="admin_pending_withdraws")],
+        [InlineKeyboardButton("🎁 سفارش‌های گیفت در انتظار", callback_data="admin_pending_giftboost")],
         [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats")],
         [InlineKeyboardButton("💰 افزودن سکه/لیبر به کاربر", callback_data="admin_give_currency")],
         [InlineKeyboardButton("🎫 فعال‌سازی دستی اشتراک", callback_data="admin_grant_sub")],
@@ -1085,9 +965,6 @@ def admin_grant_sub_target_keyboard():
     ])
 
 
-# ---------------------------------------------------------------
-#  رقابت آنلاین رنک‌بندی‌شده
-# ---------------------------------------------------------------
 def competition_menu_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("⚔️ شروع مسابقه", callback_data="comp_start"),
@@ -1096,6 +973,7 @@ def competition_menu_keyboard():
          InlineKeyboardButton("🏆 برترین‌ها", callback_data="comp_top")],
         [InlineKeyboardButton("🎯 ماموریت امروز", callback_data="comp_mission"),
          InlineKeyboardButton("📆 فصل فعلی", callback_data="comp_season")],
+        [InlineKeyboardButton("🥋 تکنیک‌های رقابتی", callback_data="technique_menu")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")],
     ])
 
@@ -1103,11 +981,6 @@ def competition_menu_keyboard():
 # ============================================================
 #  SECTION 4: COMPETITION HANDLERS — رقابت آنلاین رنک‌بندی‌شده
 # ============================================================
-# -*- coding: utf-8 -*-
-"""
-هندلرهای رقابت آنلاین رنک‌بندی‌شده (مثل کالاف) برای ربات LIBER
-شامل: صف مسابقه‌ی واقعی، شبیه‌سازی نتیجه، ارتقای رنک، تورنمنت فصلی خودکار
-"""
 import time
 import random
 import logging
@@ -1119,15 +992,23 @@ from telegram.error import TelegramError
 
 logger = logging.getLogger("LIBER.competition")
 
-_last_start_time = {}  # user_id -> monotonic timestamp، ضدباگ
+_last_start_time = {}
 
 
-# ---------------------------------------------------------------
-#  شبیه‌سازی مسابقه
-# ---------------------------------------------------------------
-def _player_power(rank_index):
+def _player_power(rank_index, user_id=None):
+    """قدرت پایه‌ی بازیکن در یک مسابقه. اگر user_id داده شود، بونوس دائمی
+    درخت تکنیک‌های رقابتی (handlers_competition_boost.py) هم اعمال می‌شود."""
     base = 40 + rank_index * 12
-    return base + random.randint(-10, 10)
+    power = base + random.randint(-10, 10)
+    if user_id is not None:
+        try:
+            import handlers_competition_boost
+            bonus_pct = handlers_competition_boost.get_technique_bonus_percent(user_id)
+            if bonus_pct:
+                power = round(power * (1 + bonus_pct / 100))
+        except Exception:
+            pass
+    return power
 
 
 def _play_match(power_a, power_b):
@@ -1144,11 +1025,10 @@ def _play_match(power_a, power_b):
     return ("a" if score_a > score_b else "b"), score_a, score_b
 
 
-_win_streaks = {}  # user_id -> consecutive win count (in-memory, resets on restart — acceptable for a fun badge)
+_win_streaks = {}
 
 
 def _apply_result(user_id, outcome):
-    """محاسبه‌ی مدال/LIBER/ارتقا برای یک بازیکن. متن نتیجه را برمی‌گرداند."""
     profile = get_comp_profile(user_id)
     rank_index = profile["rank_index"]
 
@@ -1185,9 +1065,8 @@ def _apply_result(user_id, outcome):
 
 
 async def _resolve_match(bot, user_a, user_b, vs_bot):
-    """اجرای مسابقه بین دو کاربر واقعی یا یک کاربر و ربات؛ نتیجه برای هر دو ارسال می‌شود."""
     profile_a = get_comp_profile(user_a)
-    power_a = _player_power(profile_a["rank_index"])
+    power_a = _player_power(profile_a["rank_index"], user_a)
 
     if vs_bot:
         power_b = max(20, power_a + random.randint(-15, 15))
@@ -1204,7 +1083,7 @@ async def _resolve_match(bot, user_a, user_b, vs_bot):
         return
 
     profile_b = get_comp_profile(user_b)
-    power_b = _player_power(profile_b["rank_index"])
+    power_b = _player_power(profile_b["rank_index"], user_b)
     outcome, score_a, score_b = _play_match(power_a, power_b)
 
     if outcome == "draw":
@@ -1238,11 +1117,7 @@ async def _resolve_match(bot, user_a, user_b, vs_bot):
         await handlers_bonus.check_win_streak_achievement(user_b, _win_streaks.get(user_b, 0), bot)
 
 
-# ---------------------------------------------------------------
-#  هندلرهای کاربر
-# ---------------------------------------------------------------
 async def competition_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نسخه‌ی دستوری (/competition) — همان اطلاعات منوی رقابت را با پیام معمولی می‌فرستد."""
     profile = get_comp_profile(update.effective_user.id)
     text = (
         f"⚔️ رقابت آنلاین LIBER\n\n"
@@ -1303,7 +1178,7 @@ async def competition_season_callback(update: Update, context: ContextTypes.DEFA
     days_left = max(0, (TOURNAMENT_INTERVAL_SECONDS - (now - season["started_at"])) // 86400)
     r = TOURNAMENT_REWARDS
     text = (
-        f"📆 فول {season['season_number']}\n\n"
+        f"📆 فصل {season['season_number']}\n\n"
         f"{days_left} روز تا پایان تورنمنت فصلی مانده.\n"
         f"در پایان فصل، ۳ نفر برتر خودکار جایزه می‌گیرند:\n"
         f"🥇 {r[1]} LIBER   🥈 {r[2]} LIBER   🥉 {r[3]} LIBER"
@@ -1383,9 +1258,6 @@ async def competition_start_callback(update: Update, context: ContextTypes.DEFAU
         )
 
 
-# ---------------------------------------------------------------
-#  کارهای زمان‌بندی‌شده
-# ---------------------------------------------------------------
 async def queue_matchmaking_job(context: ContextTypes.DEFAULT_TYPE):
     now = int(time.time())
     queued = comp_all_queued()
@@ -1440,7 +1312,7 @@ async def tournament_job(context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 user_id,
-                f"📆 فصل جدید شروع شد: فول {new_season}!\nمدال فصلی همه صفر شد — رنک اصلی‌تون دست‌نخورده باقی موند.",
+                f"📆 فصل جدید شروع شد: فصل {new_season}!\nمدال فصلی همه صفر شد — رنک اصلی‌تون دست‌نخورده باقی موند.",
             )
         except TelegramError:
             pass
@@ -1448,9 +1320,6 @@ async def tournament_job(context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"تورنمنت فصلی برگزار شد. فصل جدید: {new_season}")
 
 
-# ---------------------------------------------------------------
-#  دیسپچر کال‌بک‌های رقابت
-# ---------------------------------------------------------------
 COMPETITION_CALLBACKS = {
     "competition_menu": competition_menu_callback,
     "comp_profile": competition_profile_callback,
@@ -1472,31 +1341,15 @@ async def competition_router(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ============================================================
 #  SECTION 5: USER HANDLERS — منو، بازار، بانک، صندوق، اشتراک، برداشت
 # ============================================================
-# -*- coding: utf-8 -*-
-"""
-هندلرهای کاربری ربات LIBER
-شامل: منوی اصلی، پروفایل، بازار، بانک، صندوق‌ها، اشتراک استارز، برداشت، رفرال، ضد اسپم
-"""
-import time
 import calendar
-import random
-import logging
 
-from telegram import Update, LabeledPrice, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import ContextTypes
-from telegram.error import TelegramError
+from telegram import LabeledPrice, InlineKeyboardButton
 
 
-logger = logging.getLogger("LIBER")
-
-# ---------------------------------------------------------------
-#  ضد اسپم (in-memory، ساده و سریع)
-# ---------------------------------------------------------------
-_action_log = {}  # user_id -> [timestamps]
+_action_log = {}
 
 
 async def spam_guard(user_id, update: Update) -> bool:
-    """اگر کاربر اسپم کند True برمی‌گرداند (یعنی باید متوقف شود)."""
     now = time.time()
     hits = _action_log.setdefault(user_id, [])
     hits[:] = [t for t in hits if now - t < SPAM_WINDOW_SECONDS]
@@ -1517,7 +1370,6 @@ async def spam_guard(user_id, update: Update) -> bool:
 
 
 def get_subscription_perks(user_id):
-    """تعرفه‌ی فعال کاربر را برمی‌گرداند (دیکشنری کامل تعرفه) یا None اگر اشتراکی فعال نیست."""
     tier_key = get_active_subscription_tier(user_id)
     if not tier_key:
         return None
@@ -1531,14 +1383,10 @@ async def is_member_of_all_channels(bot, user_id) -> bool:
             if member.status in ("left", "kicked"):
                 return False
         except TelegramError:
-            # اگر ربات ادمین کانال نباشد یا خطای دیگری رخ دهد، برای امنیت عبور نمی‌دهیم
             return False
     return True
 
 
-# ---------------------------------------------------------------
-#  /start
-# ---------------------------------------------------------------
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     referred_by = None
@@ -1598,9 +1446,6 @@ async def check_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         await q.answer("هنوز در همه‌ی کانال‌ها عضو نشده‌اید ❌", show_alert=True)
 
 
-# ---------------------------------------------------------------
-#  پروفایل
-# ---------------------------------------------------------------
 async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -1641,9 +1486,6 @@ async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.edit_message_text(text, reply_markup=markup)
 
 
-# ---------------------------------------------------------------
-#  بازار
-# ---------------------------------------------------------------
 async def market_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -1723,9 +1565,6 @@ async def _do_market_sell(update, context, amount):
     )
 
 
-# ---------------------------------------------------------------
-#  بانک
-# ---------------------------------------------------------------
 async def bank_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -1853,9 +1692,6 @@ async def _do_bank_deposit(update, context, amount):
     await update.message.reply_text(f"✅ {amount} سکه واریز شد.", reply_markup=back_keyboard())
 
 
-# ---------------------------------------------------------------
-#  صندوق‌ها
-# ---------------------------------------------------------------
 async def chests_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -1910,9 +1746,6 @@ async def chest_open_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
 
-# ---------------------------------------------------------------
-#  ماموریت روزانه
-# ---------------------------------------------------------------
 async def daily_mission_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     user_id = q.from_user.id
@@ -1948,9 +1781,6 @@ async def daily_mission_callback(update: Update, context: ContextTypes.DEFAULT_T
     )
 
 
-# ---------------------------------------------------------------
-#  رفرال
-# ---------------------------------------------------------------
 async def referral_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -1986,11 +1816,7 @@ async def referral_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.edit_message_text(text, reply_markup=back_keyboard())
 
 
-# ---------------------------------------------------------------
-#  اشتراک ویژه (Telegram Stars)
-# ---------------------------------------------------------------
 def is_month_end_today():
-    """True فقط اگه امروز (UTC) آخرین روز تقویمی ماه باشه."""
     now = time.gmtime()
     last_day = calendar.monthrange(now.tm_year, now.tm_mon)[1]
     return now.tm_mday == last_day
@@ -2053,7 +1879,7 @@ async def subscription_buy_callback(update: Update, context: ContextTypes.DEFAUL
         title=title,
         description=description,
         payload=f"sub:{tier_key}:{months}:{q.from_user.id}",
-        provider_token="",  # برای پرداخت با استارز (XTR) این فیلد خالی می‌ماند
+        provider_token="",
         currency="XTR",
         prices=[LabeledPrice(label=tier["title"], amount=stars)],
     )
@@ -2110,9 +1936,6 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
             pass
 
 
-# ---------------------------------------------------------------
-#  برداشت TON
-# ---------------------------------------------------------------
 async def withdraw_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -2159,7 +1982,6 @@ async def _do_withdraw_address(update, context, address):
         fee_pct = round(fee_pct * (1 - perks["withdraw_fee_discount_percent"] / 100), 4)
     fee = round(amount * fee_pct / 100, 2)
     net = round(amount - fee, 2)
-    # نرخ نمادین تبدیل LIBER به TON؛ در صورت نیاز از منبع قیمت واقعی استفاده شود
     ton_amount = round(net / MARKET_BASE_PRICE, 4)
     discount_note = f" (🎫 با تخفیف اشتراک: {fee_pct}٪ کارمزد)" if perks else ""
 
@@ -2215,9 +2037,6 @@ async def withdraw_confirm_callback(update: Update, context: ContextTypes.DEFAUL
     await handlers_bonus.check_first_withdraw_achievement(user_id, context.bot)
 
 
-# ---------------------------------------------------------------
-#  راهنما
-# ---------------------------------------------------------------
 async def help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -2233,9 +2052,6 @@ async def help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.edit_message_text(text, reply_markup=back_keyboard())
 
 
-# ---------------------------------------------------------------
-#  دریافت پیام‌های متنی (پاسخ به مراحل چندقسمتی)
-# ---------------------------------------------------------------
 async def text_message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -2245,34 +2061,36 @@ async def text_message_router(update: Update, context: ContextTypes.DEFAULT_TYPE
     if await spam_guard(user_id, update):
         return
 
-    # ابتدا بررسی می‌کنیم آیا این پیام مربوط به مرحله‌ی ادمین (broadcast/ban) است
     import admin_panel
     if await admin_panel.admin_text_router(update, context):
         return
 
-    # سپس بررسی می‌کنیم آیا مربوط به یکی از قابلیت‌های اضافه است (کشور، اتحاد و...)
     import handlers_extra
     if await handlers_extra.extra_text_router(update, context):
         return
 
-    # سپس قابلیت‌های پاداشی (کد هدیه و...)
     import handlers_bonus
     if await handlers_bonus.bonus_text_router(update, context):
         return
 
-    # سپس قابلیت‌های اجتماعی (ارسال LIBER و...)
     import handlers_social
     if await handlers_social.social_text_router(update, context):
         return
 
-    # سپس بیانه‌ی عمومی
     import handlers_war
     if await handlers_war.war_text_router(update, context):
         return
 
-    # سپس مزایده‌ی نظامی
     import handlers_market
     if await handlers_market.market_text_router(update, context):
+        return
+
+    import handlers_country_alliance
+    if await handlers_country_alliance.country_alliance_text_router(update, context):
+        return
+
+    import handlers_competition_boost
+    if await handlers_competition_boost.boost_text_router(update, context):
         return
 
     awaiting = context.user_data.get("awaiting")
@@ -2307,13 +2125,9 @@ async def text_message_router(update: Update, context: ContextTypes.DEFAULT_TYPE
         await _do_withdraw_address(update, context, raw_text)
         return
 
-    # اگر منتظر ورودی خاصی نبودیم، منوی اصلی را نشان بده
     await send_main_menu(update, context)
 
 
-# ---------------------------------------------------------------
-#  دیسپچر اصلی کال‌بک‌ها
-# ---------------------------------------------------------------
 SIMPLE_CALLBACKS = {
     "main_menu": send_main_menu,
     "menu_profile": profile_callback,
@@ -2385,38 +2199,18 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             handled = await handlers_war.war_callback_router(update, context)
         if not handled:
             import handlers_market
-            await handlers_market.market_callback_router(update, context)
+            handled = await handlers_market.market_callback_router(update, context)
+        if not handled:
+            import handlers_country_alliance
+            handled = await handlers_country_alliance.country_alliance_callback_router(update, context)
+        if not handled:
+            import handlers_competition_boost
+            await handlers_competition_boost.boost_callback_router(update, context)
 
 
 # ============================================================
-#  SECTION 6: MAIN — اجرای ربات (پنل مدیریت در admin_panel.py جداست)
+#  SECTION 6: MAIN — اجرای ربات
 # ============================================================
-# -*- coding: utf-8 -*-
-"""
-main.py — نقطه‌ی ورود ربات LIBER
--------------------------------------------------------------
-این فایل همه‌ی ماژول‌ها را کنار هم می‌چیند و ربات را اجرا می‌کند.
-
-فایل‌های همراه (باید کنار همین فایل در همان پوشه باشند):
-    py                 تنظیمات، تعرفه‌ها، رنک‌ها
-    database.py                لایه‌ی دیتابیس (SQLite)
-    keyboards.py                سازنده‌ی دکمه‌های شیشه‌ای
-    handlers_user.py           منو، بازار، بانک، صندوق، اشتراک، برداشت، رفرال
-    handlers_admin.py          پنل مدیریت (تایید برداشت، آمار، پیام همگانی، بن)
-    handlers_competition.py    رقابت آنلاین رنک‌بندی‌شده (صف واقعی، تورنمنت)
-
-نصب:
-    pip install python-telegram-bot==21.*
-
-اجرا:
-    python main.py
-
-قبل از اجرا حتماً BOT_TOKEN و ADMIN_IDS را در py تنظیم کنید،
-یا با متغیرهای محیطی BOT_TOKEN / ADMIN_IDS override کنید.
-"""
-import logging
-
-from telegram import Update, LabeledPrice
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -2424,7 +2218,6 @@ from telegram.ext import (
     MessageHandler,
     PreCheckoutQueryHandler,
     filters,
-    ContextTypes,
 )
 
 
@@ -2435,106 +2228,58 @@ logging.basicConfig(
 logger = logging.getLogger("LIBER.main")
 
 
-# ---------------------------------------------------------------
-#  دستور مخفی ادمین (طبق ADMIN_SECRET_COMMAND)
-# ---------------------------------------------------------------
 async def admin_secret_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMIN_IDS:
-        # برای هر کس دیگری، انگار این دستور اصلاً وجود ندارد
         return
     await update.message.reply_text("👑 پنل مدیریت LIBER", reply_markup=admin_panel_keyboard())
 
 
-# ---------------------------------------------------------------
-#  خطاهای عمومی (تا کرش نکند)
-# ---------------------------------------------------------------
 async def error_handler(update, context: ContextTypes.DEFAULT_TYPE):
     logger.error("خطا در پردازش آپدیت:", exc_info=context.error)
 
 
-# ---------------------------------------------------------------
-#  ساخت اپلیکیشن
-# ---------------------------------------------------------------
 def build_application() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # --- شروع و عضویت اجباری ---
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CallbackQueryHandler(check_join_callback, pattern="^check_join$"))
-
-    # --- دستور مخفی ادمین ---
     app.add_handler(CommandHandler(ADMIN_SECRET_COMMAND.lstrip("/"), admin_secret_command))
-
-    # --- منوهای اصلی کاربر (شامل رقابت و ادمین به‌عنوان fallback) ---
     app.add_handler(CallbackQueryHandler(callback_router))
-
-    # --- رقابت آنلاین: دستور مستقیم هم داشته باشد ---
     app.add_handler(CommandHandler("competition", competition_command))
-
-    # --- پرداخت با استارز (اشتراک) ---
     app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
-
-    # --- پیام‌های متنی (مراحل چندقسمتی + broadcast/ban ادمین) ---
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_router))
-
-    # --- خطاها ---
     app.add_error_handler(error_handler)
 
     return app
 
 
-# ---------------------------------------------------------------
-#  کارهای زمان‌بندی‌شده (Job Queue)
-# ---------------------------------------------------------------
 def schedule_jobs(app: Application):
     jq = app.job_queue
     if jq is None:
         logger.warning("job_queue فعال نیست — برای فعال‌سازی: pip install 'python-telegram-bot[job-queue]'")
         return
 
-    # نوسان بازار هر ۱ ساعت
     jq.run_repeating(
         lambda context: _fluctuate_market_job(context),
         interval=MARKET_UPDATE_INTERVAL_SECONDS,
         first=60,
     )
-
-    # صف مسابقه‌ی رقابت آنلاین
     jq.run_repeating(queue_matchmaking_job, interval=MATCH_QUEUE_CHECK_SECONDS, first=30)
-
-    # تورنمنت فصلی
     jq.run_repeating(tournament_job, interval=86400, first=120)
-
-    # جایزه‌ی ماهانه‌ی برترین دعوت‌کننده (خودش تشخیص می‌ده ماه عوض شده یا نه)
     jq.run_repeating(_referral_monthly_job, interval=86400, first=180)
-
-    # 🕵️ تورنمنت مخفی VIP (فقط برای مشترکین، هیچ‌جا تبلیغ نمی‌شه)
     jq.run_repeating(_vip_tournament_job, interval=86400, first=200)
-
-    # جنگ کلن مستقل: matchmaking + تورنمنت ماهانه
     jq.run_repeating(_clan_war_matching_job, interval=180, first=90)
     jq.run_repeating(_clan_tournament_job, interval=86400, first=240)
-
-    # جنگ بزرگ سروری (۵ نفره)
     jq.run_repeating(_server_war_job, interval=180, first=60)
-
-    # ⚡ جایزه‌ی برق‌آسا (اولین نفری که بزنه می‌بره) — هر ۳ ساعت یه دور جدید
-    jq.run_repeating(_lightning_round_job, interval=3 * 3600, first=600)
-
-    # 🏛 حل‌وفصل مزایده‌های نظامی تمام‌شده
+    # ⚡ جایزه‌ی برق‌آسا حذف شد (طبق درخواست کاربر) — دیگر هیچ دوری اجرا نمی‌شود.
     jq.run_repeating(_market_sweep_job, interval=300, first=90)
 
 
 async def _market_sweep_job(context: ContextTypes.DEFAULT_TYPE):
     import handlers_market
     await handlers_market.market_sweep_job(context)
-
-
-async def _lightning_round_job(context: ContextTypes.DEFAULT_TYPE):
-    import handlers_social
-    await handlers_social.lightning_round_job(context)
 
 
 async def _clan_war_matching_job(context: ContextTypes.DEFAULT_TYPE):
@@ -2571,9 +2316,6 @@ async def _fluctuate_market_job(context: ContextTypes.DEFAULT_TYPE):
     await handlers_extra.resolve_predictions_job(context)
 
 
-# ---------------------------------------------------------------
-#  اجرا
-# ---------------------------------------------------------------
 def main():
     init_db()
     app = build_application()
