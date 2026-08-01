@@ -2,21 +2,14 @@
 """
 handlers_war.py — حمله‌ی نظامی + بیانه‌ی عمومی (فایل جدا)
 ================================================================
-جاهایی که درخواست مبهم بود، یه تصمیم مشخص و منطقی گرفتم — همه‌جا با
-کامنت مشخص کردم کجا. اگه با نظرتون فرق داشت، فقط بگید کدوم عدد رو
-عوض کنم.
-
-⚙️ تصمیم‌های گرفته‌شده برای جاهای مبهم:
-  • هزینه‌ی هر موج حمله: ۵۰ LIBER (دقیقاً طبق چیزی که گفتید)
-  • «موج دوم» = می‌تونی دوباره به همون هدف حمله کنی (محدودیت فقط cooldown کوتاه)
-  • تاخیر رسیدن حمله: ۳ دقیقه (دقیقاً طبق چیزی که گفتید)
-  • جهت حمله (غرب/شرق/جنوب/شمال): کاملاً نمایشی، روی محاسبه تاثیر نداره
-  • آسیب هر حمله‌ی موفق: ۲۵٪ از قدرت نظامی مدافع نابود می‌شه
-  • بازسازی: هزینه‌ش متناسب با مقدار آسیب‌دیده است
-  • بیانه: سقف ۵ پست در روز برای هر کاربر (نه ۵۰، چون ۵۰ در روز عملاً باز کردن
-    در به روی اسپمه؛ اگه واقعاً ۵۰ می‌خواید فقط بگید عوضش می‌کنم)
-  • لایک بیانه: هر کاربر فقط یک‌بار می‌تونه لایک کنه (وگرنه میشه چاپ پول)
-  • پاسخ به بیانه: حداکثر ۵ پاسخ روی هر بیانه نمایش داده می‌شه
+تنظیمات:
+  • هزینه‌ی هر موج حمله: ۵۰ LIBER
+  • تاخیر رسیدن حمله: ۳ دقیقه
+  • جهت حمله: کاملاً نمایشی
+  • آسیب هر حمله‌ی موفق: ۲۵٪ از قدرت نظامی مدافع
+  • بیانه: سقف ۵ پست در روز برای هر کاربر
+  • لایک بیانه: هر کاربر فقط یک‌بار
+  • پاسخ به بیانه: حداکثر ۵ پاسخ نمایش داده می‌شود
 """
 import time
 import random
@@ -30,15 +23,12 @@ from main import get_conn, get_user, update_balance, log_transaction, back_keybo
 
 logger = logging.getLogger("LIBER.war")
 
-# ============================================================
-#   تنظیمات
-# ============================================================
 ATTACK_WAVE_COST = 50
 ATTACK_DELAY_SECONDS = 3 * 60
 ATTACK_DAMAGE_PERCENT = 25
-MIN_ATTACK_DAMAGE = 10  # حتی اگه مدافع تقریباً هیچ نیرویی نداشته باشه، حمله‌ی موفق حداقل این‌قدر آسیب می‌زنه و جایزه می‌ده
-ATTACK_COOLDOWN_SECONDS = 5 * 60  # فاصله‌ی حداقلی بین دو حمله به یه هدف (جای «موج دوم»)
-RECONSTRUCTION_COST_PER_POWER = 15  # هزینه‌ی بازسازی هر ۱ واحد قدرت ازدست‌رفته
+MIN_ATTACK_DAMAGE = 10
+ATTACK_COOLDOWN_SECONDS = 5 * 60
+RECONSTRUCTION_COST_PER_POWER = 15
 
 DIRECTIONS = {"west": "🧭 غرب", "east": "🧭 شرق", "south": "🧭 جنوب", "north": "🧭 شمال"}
 
@@ -47,9 +37,6 @@ DECLARATION_LIKE_REWARD = 0.3
 MAX_REPLIES_SHOWN = 5
 
 
-# ============================================================
-#   جداول محلی
-# ============================================================
 _tables_ready = False
 
 
@@ -125,9 +112,6 @@ def _get_power_lost(user_id):
     return row["power_lost"] if row else 0
 
 
-# ============================================================
-#   حمله‌ی نظامی
-# ============================================================
 def _attack_target_keyboard(targets):
     rows = [[InlineKeyboardButton(f"🎯 {name} (قدرت: {power})", callback_data=f"war_pick_target:{uid}")]
             for uid, name, power in targets]
@@ -136,7 +120,6 @@ def _attack_target_keyboard(targets):
 
 
 async def war_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """لیست چند کشور دیگه برای حمله (به‌جای «جستجو»، ساده‌ترین و امن‌ترین راه: لیست تصادفی از بازیکنان فعال)."""
     _ensure_tables()
     q = update.callback_query
     await q.answer()
@@ -236,7 +219,6 @@ async def _resolve_attack_job(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def resolve_attack(attack_id, bot):
-    """منطق اصلی رزولوشن حمله — جدا از job_queue تا مستقیم قابل تست باشه."""
     _ensure_tables()
     import handlers_military as hm
 
@@ -335,9 +317,6 @@ async def war_reconstruct_callback(update: Update, context: ContextTypes.DEFAULT
     await q.edit_message_text(f"🏗 بازسازی کامل شد! (-{cost} LIBER)", reply_markup=back_keyboard())
 
 
-# ============================================================
-#   بیانه‌ی عمومی
-# ============================================================
 def _today_key():
     return time.strftime("%Y-%m-%d", time.gmtime())
 
@@ -524,9 +503,6 @@ async def _do_declaration_reply(update, context, raw_text):
     await update.message.reply_text("✅ پاسخت ثبت شد!", reply_markup=back_keyboard())
 
 
-# ============================================================
-#   دیسپچر
-# ============================================================
 WAR_CALLBACKS = {
     "menu_war": war_menu_callback,
     "war_reconstruct": war_reconstruct_callback,
