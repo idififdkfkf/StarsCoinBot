@@ -74,8 +74,8 @@ logger = logging.getLogger("LIBER.country_alliance")
 # ============================================================
 #   تنظیمات
 # ============================================================
-COUNTRY_RENAME_COST_FIRST = 50
-COUNTRY_RENAME_COST_NEXT = 100
+COUNTRY_RENAME_COST_FIRST = 100
+COUNTRY_RENAME_COST_NEXT = 200
 
 ALLIANCE_AD_COST = 100
 ALLIANCE_AD_DURATION_SECONDS = 3600  # ۱ ساعت
@@ -115,6 +115,14 @@ def _ensure_tables():
             expires_at INTEGER NOT NULL
         )
         """)
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS country_rename_log (
+            country_id INTEGER,
+            month_key TEXT,
+            count INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (country_id, month_key)
+        )
+        """)
     _ready = True
 
 
@@ -132,21 +140,30 @@ def _get_membership(user_id):
 
 
 def _get_alliance(alliance_id):
+    """_ensure_tables() اینجا لازمه چون caller های مختلف (مثل _do_alliance_search)
+    ممکنه به ستون‌های bio/join_code این نتیجه دسترسی پیدا کنن که فقط با
+    ALTER TABLE داخل _ensure_tables ساخته می‌شن."""
+    _ensure_tables()
     with get_conn() as conn:
         return conn.execute("SELECT * FROM alliances WHERE alliance_id = ?", (alliance_id,)).fetchone()
 
 
 def _get_alliance_by_name(name):
+    _ensure_tables()
     with get_conn() as conn:
         return conn.execute("SELECT * FROM alliances WHERE name = ?", (name,)).fetchone()
 
 
 def _get_alliance_by_code(code):
+    """بدون _ensure_tables، اگه ستون join_code هنوز با ALTER TABLE ساخته نشده باشه،
+    این کوئری مستقیماً با OperationalError کرش می‌کنه (نه فقط None برمی‌گردونه)."""
+    _ensure_tables()
     with get_conn() as conn:
         return conn.execute("SELECT * FROM alliances WHERE join_code = ?", (code,)).fetchone()
 
 
 def _gen_join_code():
+    _ensure_tables()
     alphabet = string.ascii_uppercase + string.digits
     with get_conn() as conn:
         while True:
@@ -157,7 +174,11 @@ def _gen_join_code():
 
 
 def _ensure_join_code(alliance_id):
-    """اگر اتحادی از قبل ساخته شده و کد نداره (چون قبل از این آپدیت ساخته شده)، الان یکی می‌سازیم."""
+    """اگر اتحادی از قبل ساخته شده و کد نداره (چون قبل از این آپدیت ساخته شده)، الان یکی می‌سازیم.
+    باگ رفع‌شده: قبلاً اگه این تابع اولین چیزی بود که از این فایل صدا زده می‌شد (مثلاً مستقیم بعد
+    از ساخت اتحاد در handlers_extra.py)، ستون join_code هنوز با ALTER TABLE اضافه نشده بود و
+    کرش می‌کرد. حالا _ensure_tables() همیشه اول اجرا می‌شه."""
+    _ensure_tables()
     alliance = _get_alliance(alliance_id)
     if alliance and not alliance["join_code"]:
         code = _gen_join_code()
@@ -185,6 +206,25 @@ def _member_count(alliance_id):
 # ============================================================
 #   ۱) تغییر نام کشور
 # ============================================================
+COUNTRY_RENAME_MAX_PER_MONTH = 2
+
+
+def _rename_month_key(ts=None):
+    ts = ts if ts is not None else time.time()
+    return time.strftime("%Y-%m", time.gmtime(ts))
+
+
+def _rename_count_this_month(country_id):
+    _ensure_tables()
+    month_key = _rename_month_key()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT count FROM country_rename_log WHERE country_id = ? AND month_key = ?",
+            (country_id, month_key),
+        ).fetchone()
+    return row["count"] if row else 0
+
+
 async def country_rename_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _ensure_tables()
     q = update.callback_query
@@ -193,6 +233,14 @@ async def country_rename_start_callback(update: Update, context: ContextTypes.DE
 
     if not country:
         await q.answer("اول باید یک کشور بسازی.", show_alert=True)
+        return
+
+    used_this_month = _rename_count_this_month(country["country_id"])
+    if used_this_month >= COUNTRY_RENAME_MAX_PER_MONTH:
+        await q.answer(
+            f"❌ این ماه دیگه نمی‌تونی اسم رو عوض کنی — سقف {COUNTRY_RENAME_MAX_PER_MONTH} بار در ماهه.",
+            show_alert=True,
+        )
         return
 
     cost = COUNTRY_RENAME_COST_FIRST if country["rename_count"] == 0 else COUNTRY_RENAME_COST_NEXT
@@ -204,8 +252,12 @@ async def country_rename_start_callback(update: Update, context: ContextTypes.DE
     await q.answer()
     context.user_data["country_rename_cost"] = cost
     context.user_data["awaiting"] = "country_rename_input"
+    remaining = COUNTRY_RENAME_MAX_PER_MONTH - used_this_month
     await q.edit_message_text(
-        f"✏️ اسم جدید کشورت رو بفرست (حداکثر ۳۰ حرف).\n💰 هزینه‌ی این تغییر: {cost} LIBER",
+        f"✏️ اسم جدید کشورت رو بفرست.\n💰 هزینه‌ی این تغییر: {cost} LIBER\n"
+        f"📅 {remaining} بار دیگه می‌تونی این ماه اسم رو عوض کنی.\n\n"
+        "فرمت: با | شروع کن، بعدش کامل فارسی یا کامل انگلیسی بنویس.\n"
+        "مثال فارسی: |ایران\nExample English: |Persia",
         reply_markup=back_keyboard("menu_country"),
     )
 
@@ -218,14 +270,26 @@ async def _do_country_rename(update, context, raw_text):
         await update.message.reply_text("❌ کشوری نداری.", reply_markup=back_keyboard())
         return
 
-    new_name = raw_text.strip()[:30]
-    if not new_name:
-        await update.message.reply_text("❌ اسم نامعتبر است.")
+    used_this_month = _rename_count_this_month(country["country_id"])
+    if used_this_month >= COUNTRY_RENAME_MAX_PER_MONTH:
+        await update.message.reply_text(
+            f"❌ این ماه دیگه نمی‌تونی اسم رو عوض کنی — سقف {COUNTRY_RENAME_MAX_PER_MONTH} بار در ماهه.",
+            reply_markup=back_keyboard("menu_country"),
+        )
         return
 
-    cost = context.user_data.pop("country_rename_cost", None)
-    # هزینه رو دوباره از روی وضعیت فعلی محاسبه می‌کنیم (نه فقط چیزی که تو user_data ذخیره شده)
-    # تا اگه بین این مدت کاربر کاری کرده باشه هزینه درست بمونه.
+    import handlers_extra
+    ok, new_name, error_text = handlers_extra._validate_named_input(raw_text)
+    if not ok:
+        await update.message.reply_text(error_text)
+        return
+
+    existing = handlers_extra.get_country_by_name(new_name)
+    if existing and existing["country_id"] != country["country_id"]:
+        await update.message.reply_text("❌ یکی قبلاً این اسم رو برای کشورش انتخاب کرده — یه اسم دیگه بگو.")
+        return
+
+    context.user_data.pop("country_rename_cost", None)
     real_cost = COUNTRY_RENAME_COST_FIRST if country["rename_count"] == 0 else COUNTRY_RENAME_COST_NEXT
 
     user = get_user(user_id)
@@ -234,17 +298,24 @@ async def _do_country_rename(update, context, raw_text):
         return
 
     update_balance(user_id, liber=-real_cost)
+    month_key = _rename_month_key()
     with get_conn() as conn:
         conn.execute(
             "UPDATE countries SET name = ?, rename_count = rename_count + 1 WHERE country_id = ?",
             (new_name, country["country_id"]),
         )
+        conn.execute(
+            """INSERT INTO country_rename_log (country_id, month_key, count) VALUES (?, ?, 1)
+               ON CONFLICT(country_id, month_key) DO UPDATE SET count = count + 1""",
+            (country["country_id"], month_key),
+        )
     log_transaction(user_id, "COUNTRY_RENAME", f"{new_name} cost={real_cost}")
 
-    next_cost = COUNTRY_RENAME_COST_NEXT
+    remaining = COUNTRY_RENAME_MAX_PER_MONTH - (used_this_month + 1)
     await update.message.reply_text(
         f"✅ اسم کشورت به «{new_name}» تغییر کرد! (-{real_cost} LIBER)\n"
-        f"ℹ️ تغییر بعدی {next_cost} LIBER هزینه داره.",
+        f"ℹ️ {remaining} بار دیگه می‌تونی این ماه عوضش کنی. تغییر بعدی (اگه بار اولت باشه) "
+        f"{COUNTRY_RENAME_COST_NEXT} LIBER هزینه داره.",
         reply_markup=back_keyboard("menu_country"),
     )
 
