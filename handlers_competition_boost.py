@@ -92,6 +92,12 @@ GIFT_BOOST_PACKAGES = {
     "triple": {"label": "🎁🎁🎁 گیفت سه‌تایی", "cost_liber": 2500, "desc": "سه گیفت استارز برای پست شما"},
 }
 
+# 🚀 بوست حمایتی کانال (نه بوست پست شخصی کاربر — حمایت از کانال اصلی LIBER)
+CHANNEL_BOOST_PACKAGES = {
+    "day": {"label": "🚀 بوست ۱ روزه", "cost_liber": 1400, "duration_text": "۱ روز"},
+    "month": {"label": "🚀 بوست ۱ ماهه", "cost_liber": 10000, "duration_text": "۱ ماه"},
+}
+
 
 # ============================================================
 #   جداول محلی
@@ -117,6 +123,18 @@ def _ensure_tables():
             package_key TEXT NOT NULL,
             cost_liber REAL NOT NULL,
             post_link TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at INTEGER NOT NULL,
+            resolved_at INTEGER,
+            resolved_by INTEGER
+        )
+        """)
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS channel_boost_requests (
+            request_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            package_key TEXT NOT NULL,
+            cost_liber REAL NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending',
             created_at INTEGER NOT NULL,
             resolved_at INTEGER,
@@ -290,8 +308,20 @@ async def _do_giftboost_link(update, context, raw_text):
 
     await update.message.reply_text(
         f"✅ سفارش شما ثبت شد و برای بررسی ادمین ارسال گردید.\n"
+        f"🎫 کد پیگیری: #{request_id}\n"
         f"⏳ وضعیت: در حال بررسی — به محض انجام، پیام موفقیت برایتان ارسال می‌شود.",
         reply_markup=back_keyboard(),
+    )
+
+    from main import post_to_orders_channel
+    await post_to_orders_channel(
+        context.bot,
+        f"📥 سفارش جدید — گیفت استارز\n\n"
+        f"🎫 کد پیگیری: #{request_id}\n"
+        f"نوع: {package['label']}\n"
+        f"مقدار: {package['cost_liber']} LIBER\n"
+        f"لینک پست: {link}\n"
+        f"وضعیت: ⏳ در حال بررسی",
     )
 
     for admin_id in ADMIN_IDS:
@@ -344,6 +374,8 @@ async def admin_giftboost_decision_callback(update: Update, context: ContextType
                 (now, admin_id, request_id),
             )
         await q.edit_message_text(f"✅ سفارش #{request_id} به‌عنوان انجام‌شده ثبت شد.")
+        from main import post_to_orders_channel
+        await post_to_orders_channel(context.bot, f"✅ سفارش #{request_id} با موفقیت انجام شد.\nنوع: گیفت استارز")
         try:
             await context.bot.send_message(
                 req["user_id"], f"🎉 سفارش گیفت شما (#{request_id}) با موفقیت انجام شد! از خرید شما ممنونیم 🙏"
@@ -358,6 +390,8 @@ async def admin_giftboost_decision_callback(update: Update, context: ContextType
             )
         update_balance(req["user_id"], liber=req["cost_liber"])
         await q.edit_message_text(f"❌ سفارش #{request_id} رد شد و {req['cost_liber']} LIBER به کاربر برگشت.")
+        from main import post_to_orders_channel
+        await post_to_orders_channel(context.bot, f"❌ سفارش #{request_id} لغو شد.\nنوع: گیفت استارز\nمبلغ برگشت داده شد.")
         try:
             await context.bot.send_message(
                 req["user_id"],
@@ -407,9 +441,185 @@ async def admin_pending_giftboost_callback(update: Update, context: ContextTypes
 
 
 # ============================================================
+#   🚀 بوست حمایتی کانال (جدا از گیفت‌بوستِ پستِ شخصی کاربر)
+# ============================================================
+def _channel_boost_keyboard():
+    rows = [
+        [InlineKeyboardButton(f"{pkg['label']} — {pkg['cost_liber']} LIBER ({pkg['duration_text']})",
+                               callback_data=f"channelboost_pick:{key}")]
+        for key, pkg in CHANNEL_BOOST_PACKAGES.items()
+    ]
+    rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+async def channel_boost_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    await q.edit_message_text(
+        "🚀 حمایت از کانال (بوست)\n\n"
+        "با خرید بوست، از کانال اصلی LIBER حمایت می‌کنید و دیده‌شدنش بیشتر می‌شه.\n"
+        "یکی از مدت‌ها رو انتخاب کنید:",
+        reply_markup=_channel_boost_keyboard(),
+    )
+
+
+async def channel_boost_pick_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _ensure_tables()
+    q = update.callback_query
+    user_id = q.from_user.id
+    package_key = q.data.split(":", 1)[1]
+    package = CHANNEL_BOOST_PACKAGES.get(package_key)
+    if not package:
+        await q.answer("بسته نامعتبر است.", show_alert=True)
+        return
+
+    user = get_user(user_id)
+    if user["liber"] < package["cost_liber"]:
+        await q.answer(f"❌ LIBER کافی نیست. هزینه: {package['cost_liber']}", show_alert=True)
+        return
+
+    await q.answer()
+    update_balance(user_id, liber=-package["cost_liber"])
+    now = int(time.time())
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO channel_boost_requests (user_id, package_key, cost_liber, created_at)
+               VALUES (?, ?, ?, ?)""",
+            (user_id, package_key, package["cost_liber"], now),
+        )
+        request_id = cur.lastrowid
+    log_transaction(user_id, "CHANNEL_BOOST_REQUEST", f"#{request_id} {package_key}")
+
+    from main import FORCE_JOIN_CHANNELS, post_to_orders_channel
+    channel_link = FORCE_JOIN_CHANNELS[0]["url"] if FORCE_JOIN_CHANNELS else ""
+
+    await q.edit_message_text(
+        f"✅ سفارش بوست {package['duration_text']} ثبت شد!\n"
+        f"🎫 کد پیگیری: #{request_id}\n\n"
+        f"🔗 لینک کانال برای حمایت: {channel_link}\n"
+        f"⏳ وضعیت: در حال انجام — به محض فعال شدن بوست، بهتون خبر می‌دیم.",
+        reply_markup=back_keyboard(),
+    )
+
+    await post_to_orders_channel(
+        context.bot,
+        f"📥 سفارش جدید — بوست کانال\n\n"
+        f"🎫 کد پیگیری: #{request_id}\n"
+        f"نوع: {package['label']} ({package['duration_text']})\n"
+        f"مقدار: {package['cost_liber']} LIBER\n"
+        f"وضعیت: ⏳ در حال انجام",
+    )
+
+    for admin_id in ADMIN_IDS:
+        try:
+            await context.bot.send_message(
+                admin_id,
+                f"🚀 سفارش بوست کانال جدید #{request_id}\n"
+                f"کاربر: {user_id}\n"
+                f"بسته: {package['label']} ({package['cost_liber']} LIBER)",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ انجام شد", callback_data=f"admin_cb_done:{request_id}"),
+                     InlineKeyboardButton("❌ رد کردن", callback_data=f"admin_cb_reject:{request_id}")],
+                ]),
+            )
+        except TelegramError:
+            pass
+
+
+async def admin_channelboost_decision_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _ensure_tables()
+    q = update.callback_query
+    admin_id = q.from_user.id
+    if admin_id not in ADMIN_IDS:
+        await q.answer("⛔ دسترسی غیرمجاز.", show_alert=True)
+        return
+
+    action, request_id_str = q.data.split(":")
+    request_id = int(request_id_str)
+    with get_conn() as conn:
+        req = conn.execute("SELECT * FROM channel_boost_requests WHERE request_id = ?", (request_id,)).fetchone()
+
+    if not req:
+        await q.answer("این سفارش پیدا نشد.", show_alert=True)
+        return
+    if req["status"] != "pending":
+        await q.answer(f"قبلاً «{req['status']}» شده.", show_alert=True)
+        return
+
+    await q.answer()
+    now = int(time.time())
+    from main import post_to_orders_channel
+
+    if action == "admin_cb_done":
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE channel_boost_requests SET status = 'done', resolved_at = ?, resolved_by = ? WHERE request_id = ?",
+                (now, admin_id, request_id),
+            )
+        await q.edit_message_text(f"✅ سفارش بوست #{request_id} فعال شد.")
+        await post_to_orders_channel(context.bot, f"✅ سفارش #{request_id} با موفقیت انجام شد.\nنوع: بوست کانال")
+        try:
+            await context.bot.send_message(req["user_id"], f"🎉 بوست شما (#{request_id}) فعال شد! ممنون از حمایتتون 🙏")
+        except TelegramError:
+            pass
+    else:
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE channel_boost_requests SET status = 'rejected', resolved_at = ?, resolved_by = ? WHERE request_id = ?",
+                (now, admin_id, request_id),
+            )
+        update_balance(req["user_id"], liber=req["cost_liber"])
+        await q.edit_message_text(f"❌ سفارش بوست #{request_id} رد شد و {req['cost_liber']} LIBER برگشت.")
+        await post_to_orders_channel(context.bot, f"❌ سفارش #{request_id} لغو شد.\nنوع: بوست کانال\nمبلغ برگشت داده شد.")
+        try:
+            await context.bot.send_message(
+                req["user_id"], f"❌ سفارش بوست شما (#{request_id}) رد شد و {req['cost_liber']} LIBER برگشت."
+            )
+        except TelegramError:
+            pass
+
+
+async def admin_pending_channelboost_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """برای دکمه‌ی «🚀 سفارش‌های بوست کانال در انتظار» در پنل ادمین."""
+    _ensure_tables()
+    q = update.callback_query
+    if q.from_user.id not in ADMIN_IDS:
+        await q.answer("⛔ دسترسی غیرمجاز.", show_alert=True)
+        return
+    await q.answer()
+
+    with get_conn() as conn:
+        pending = conn.execute(
+            "SELECT * FROM channel_boost_requests WHERE status = 'pending' ORDER BY created_at ASC LIMIT 20"
+        ).fetchall()
+
+    if not pending:
+        await q.edit_message_text("🚀 هیچ سفارش بوست کانالی در انتظار نیست.", reply_markup=back_keyboard("admin_panel"))
+        return
+
+    await q.edit_message_text(f"🚀 {len(pending)} سفارش بوست در انتظار پیدا شد. یکی‌یکی ارسال می‌شوند...")
+    for req in pending:
+        package = CHANNEL_BOOST_PACKAGES.get(req["package_key"], {"label": req["package_key"]})
+        text = f"🚀 سفارش بوست #{req['request_id']}\n\nکاربر: {req['user_id']}\nبسته: {package['label']} ({req['cost_liber']} LIBER)"
+        try:
+            await context.bot.send_message(
+                q.from_user.id, text,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ انجام شد", callback_data=f"admin_cb_done:{req['request_id']}"),
+                     InlineKeyboardButton("❌ رد کردن", callback_data=f"admin_cb_reject:{req['request_id']}")],
+                ]),
+            )
+        except TelegramError:
+            pass
+
+
+# ============================================================
 #   دیسپچر
 # ============================================================
 SIMPLE_CALLBACKS = {
+    "channel_boost_menu": channel_boost_menu_callback,
+    "admin_pending_channelboost": admin_pending_channelboost_callback,
     "technique_menu": technique_menu_callback,
     "technique_upgrade": technique_upgrade_callback,
     "giftboost_menu": giftboost_menu_callback,
@@ -427,6 +637,12 @@ async def boost_callback_router(update: Update, context: ContextTypes.DEFAULT_TY
         return True
     if data.startswith("admin_gb_done:") or data.startswith("admin_gb_reject:"):
         await admin_giftboost_decision_callback(update, context)
+        return True
+    if data.startswith("channelboost_pick:"):
+        await channel_boost_pick_callback(update, context)
+        return True
+    if data.startswith("admin_cb_done:") or data.startswith("admin_cb_reject:"):
+        await admin_channelboost_decision_callback(update, context)
         return True
     return False
 
