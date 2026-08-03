@@ -16,10 +16,43 @@ handlers_country_alliance.py پیاده‌سازی شده‌اند (چون جد�
 خودشان را دارند) — این فایل فقط دکمه‌های ورودی به آن‌ها را نشان می‌دهد.
 """
 import random
+import re
 import logging
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+
+
+# ============================================================
+#   اعتبارسنجی اسم (کشور/اتحاد) — باید با | شروع بشه و کامل فارسی
+#   یا کامل انگلیسی باشه (بدون ترکیب دو زبان یا کاراکتر عجیب)
+# ============================================================
+_NAME_FORMAT_HELP = (
+    "فرمت درست: با | شروع کن، بعدش اسم رو کامل فارسی یا کامل انگلیسی بنویس.\n"
+    "مثال فارسی: |ایران\n"
+    "Example English: |Persia"
+)
+
+
+def _validate_named_input(raw_text, max_len=30):
+    """ورودی خام رو بررسی می‌کنه. خروجی: (ok, clean_name_or_None, error_text_or_None)."""
+    text = (raw_text or "").strip()
+    if not text.startswith("|"):
+        return False, None, f"❌ اسم باید با | شروع بشه.\n\n{_NAME_FORMAT_HELP}"
+
+    name = text[1:].strip()
+    if not name:
+        return False, None, f"❌ بعد از | باید اسم رو بنویسی.\n\n{_NAME_FORMAT_HELP}"
+
+    is_persian = bool(re.fullmatch(r"[\u0600-\u06FF\s]+", name))
+    is_english = bool(re.fullmatch(r"[A-Za-z\s]+", name))
+    if not (is_persian or is_english):
+        return False, None, (
+            "❌ اسم نامتعارفه — یا ترکیبیه یا کاراکتر عجیب داره.\n"
+            f"لطفاً یا کامل فارسی یا کامل انگلیسی بنویس.\n\n{_NAME_FORMAT_HELP}"
+        )
+
+    return True, name[:max_len], None
 
 from main import (
     MARKET_BASE_PRICE,
@@ -122,6 +155,11 @@ PREDICTION_MULTIPLIER = 1.8
 def get_country_by_owner(owner_id):
     with get_conn() as conn:
         return conn.execute("SELECT * FROM countries WHERE owner_id = ?", (owner_id,)).fetchone()
+
+
+def get_country_by_name(name):
+    with get_conn() as conn:
+        return conn.execute("SELECT * FROM countries WHERE name = ?", (name,)).fetchone()
 
 
 def found_country(owner_id, name):
@@ -358,6 +396,8 @@ def country_view_keyboard():
     rows = [[InlineKeyboardButton(f"🏗 {name} ({BUILDING_COSTS[key]} LIBER)", callback_data=f"country_build:{key}")]
             for key, name in BUILDING_NAMES.items()]
     rows.append([InlineKeyboardButton("✏️ تغییر نام کشور", callback_data="country_rename_start")])
+    rows.append([InlineKeyboardButton("🏭 برداشت تولید", callback_data="country_claim_production"),
+                 InlineKeyboardButton("😊 افزایش رضایت (۵۰ LIBER)", callback_data="country_boost_satisfaction")])
     rows.append([InlineKeyboardButton("🪖 تسهیلات نظامی", callback_data="menu_military")])
     rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")])
     return InlineKeyboardMarkup(rows)
@@ -436,6 +476,55 @@ logger = logging.getLogger("LIBER.extra")
 # ---------------------------------------------------------------
 #  کشور و ساختمان
 # ---------------------------------------------------------------
+# ============================================================
+#   Onboarding (قوانین + هدایت اولیه‌ی کاربر تازه‌وارد)
+#   منطق اصلی اینجاست تا main.py زیر سقف ۲۴۰۰ خط بمونه؛ main.py فقط
+#   دو تابع wrapper کوچیک داره که این‌ها رو صدا می‌زنن.
+# ============================================================
+RULES_TEXT = (
+    "📜 قوانین ربات LIBER\n\n"
+    "۱. هر کاربر فقط یک کشور می‌سازه؛ اسم کشور باید با | شروع بشه و کامل "
+    "فارسی یا کامل انگلیسی باشه (مثال: |ایران یا |Persia).\n"
+    "۲. اسپم، فحاشی و رفتار توهین‌آمیز در بیانه‌ها و پیام‌ها ممنوعه و باعث اخطار/بن می‌شه.\n"
+    "۳. هر گونه تلاش برای سوءاستفاده از باگ‌های اقتصادی باعث مسدود شدن حساب می‌شه.\n"
+    "۴. برداشت TON و خرید اشتراک نهایی و غیرقابل‌بازگشته (مگر تایید نشدن سفارش).\n"
+    "۵. با ادامه، یعنی این قوانین رو خوندی و قبول داری.\n"
+)
+
+
+def rules_accept_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ قوانین رو خوندم و قبول دارم، ادامه", callback_data="onboarding_accept_rules")],
+    ])
+
+
+async def show_onboarding_or_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, send_main_menu_fn):
+    """صدا زده می‌شود از main.py بعد از تایید عضویت اجباری. اگه کاربر هنوز
+    کشوری نساخته، اول قوانین رو نشون می‌ده؛ اگه کاربر قدیمیه (کشور داره)،
+    مستقیم منوی اصلی (send_main_menu_fn که از main.py پاس داده شده) رو نشون می‌ده."""
+    user_id = update.effective_user.id
+    has_country = bool(get_country_by_owner(user_id))
+
+    if has_country:
+        await send_main_menu_fn(update, context, greet=True)
+        return
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(RULES_TEXT, reply_markup=rules_accept_keyboard())
+    else:
+        await update.message.reply_text(RULES_TEXT, reply_markup=rules_accept_keyboard())
+
+
+async def onboarding_accept_rules_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    context.user_data["awaiting"] = "country_name_input"
+    await q.edit_message_text(
+        "🌍 عالیه! حالا اسم کشورتون رو بفرستید (حداکثر ۳۰ حرف).\n\n"
+        f"{_NAME_FORMAT_HELP}"
+    )
+
+
 async def country_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -468,7 +557,10 @@ async def country_found_callback(update: Update, context: ContextTypes.DEFAULT_T
     q = update.callback_query
     await q.answer()
     context.user_data["awaiting"] = "country_name_input"
-    await q.edit_message_text("🌍 اسم کشورتون رو بفرستید (حداکثر ۳۰ حرف):")
+    await q.edit_message_text(
+        "🌍 اسم کشورتون رو بفرستید (حداکثر ۳۰ حرف).\n\n"
+        f"{_NAME_FORMAT_HELP}"
+    )
 
 
 async def _do_found_country(update, context, raw_text):
@@ -476,13 +568,30 @@ async def _do_found_country(update, context, raw_text):
     if get_country_by_owner(user_id):
         await update.message.reply_text("شما قبلاً یک کشور ساخته‌اید.", reply_markup=back_keyboard())
         return
-    name = raw_text.strip()[:30]
-    if not name:
-        await update.message.reply_text("❌ اسم نامعتبر است.")
+
+    ok, name, error_text = _validate_named_input(raw_text)
+    if not ok:
+        await update.message.reply_text(error_text)
         return
+
+    if get_country_by_name(name):
+        await update.message.reply_text(
+            "❌ یکی قبلاً این اسم رو برای کشورش انتخاب کرده — یه اسم دیگه انتخاب کن.\n\n"
+            f"{_NAME_FORMAT_HELP}"
+        )
+        return
+
     found_country(user_id, name)
     log_transaction(user_id, "FOUND_COUNTRY", name)
-    await update.message.reply_text(f"🎉 کشور «{name}» با موفقیت تاسیس شد!", reply_markup=back_keyboard())
+
+    first_name = update.effective_user.first_name or "کاربر"
+    text = (
+        f"✅ آقای {first_name}، به لیست کشورها پیوستید! 🎉\n\n"
+        f"کشور: {name}\n\n"
+        "از حالا می‌تونید وارد بخش نظامی و جنگ‌ها بشید، ساختمان بسازید، "
+        "و یک اتحاد بسازید تا اون بخش هم برای کشورتون باز بشه."
+    )
+    await update.message.reply_text(text, reply_markup=country_view_keyboard())
 
 
 async def country_build_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -551,7 +660,11 @@ async def alliance_create_callback(update: Update, context: ContextTypes.DEFAULT
         await q.edit_message_text("شما قبلاً عضو یک اتحاد هستید.", reply_markup=back_keyboard())
         return
     context.user_data["awaiting"] = "alliance_create_name"
-    await q.edit_message_text("🤝 اسم اتحاد جدید رو بفرستید (حداکثر ۳۰ حرف):")
+    await q.edit_message_text(
+        f"🤝 اسم اتحاد جدید رو بفرستید (حداکثر ۳۰ حرف).\n"
+        f"هزینه: {ALLIANCE_CREATE_COST} LIBER — اگه LIBER کافی نداشته باشید ساخته نمی‌شه.\n\n"
+        f"{_NAME_FORMAT_HELP}"
+    )
 
 
 ALLIANCE_CREATE_COST = 300
@@ -562,17 +675,25 @@ async def _do_create_alliance(update, context, raw_text):
     if get_alliance_membership(user_id):
         await update.message.reply_text("شما قبلاً عضو یک اتحاد هستید.", reply_markup=back_keyboard())
         return
-    name = raw_text.strip()[:30]
-    if not name:
-        await update.message.reply_text("❌ اسم نامعتبر است.")
+
+    ok, name, error_text = _validate_named_input(raw_text)
+    if not ok:
+        await update.message.reply_text(error_text)
         return
+
     if get_alliance_by_name(name):
         await update.message.reply_text("❌ این اسم قبلاً استفاده شده.")
         return
+
+    # اینجا واقعاً چک می‌کنیم LIBER کافی هست یا نه — اگه نداشت، اتحاد ساخته نمی‌شه
     user = get_user(user_id)
     if user["liber"] < ALLIANCE_CREATE_COST:
-        await update.message.reply_text(f"❌ برای ساخت کلن به {ALLIANCE_CREATE_COST} LIBER نیاز داری.")
+        await update.message.reply_text(
+            f"❌ برای ساخت اتحاد به {ALLIANCE_CREATE_COST} LIBER نیاز داری.\n"
+            f"موجودی فعلی شما: {round(user['liber'], 2)} LIBER"
+        )
         return
+
     update_balance(user_id, liber=-ALLIANCE_CREATE_COST)
     alliance_id = create_alliance(name, user_id)
     log_transaction(user_id, "CREATE_ALLIANCE", name)
@@ -585,9 +706,13 @@ async def _do_create_alliance(update, context, raw_text):
     except Exception:
         code_note = ""
 
-    await update.message.reply_text(
-        f"🤝 اتحاد «{name}» ساخته شد! (-{ALLIANCE_CREATE_COST} LIBER){code_note}", reply_markup=back_keyboard()
+    first_name = update.effective_user.first_name or "کاربر"
+    text = (
+        f"✅ آقای {first_name}، اتحاد «{name}» با موفقیت ساخته شد! 🎉\n"
+        f"(-{ALLIANCE_CREATE_COST} LIBER){code_note}\n\n"
+        "حالا می‌تونید اعضا اضافه کنید، آگهی عضوگیری بزنید و وارد جنگ کلن بشید."
     )
+    await update.message.reply_text(text, reply_markup=back_keyboard())
 
 
 async def alliance_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
