@@ -2,34 +2,26 @@
 """
 LIBER Telegram Bot — main.py
 ================================================================
-این فایل خود ربات است: اقتصاد، بازار، بانک، صندوق، اشتراک استارز،
-برداشت TON، رفرال، ماموریت روزانه‌ی اجباری، رقابت آنلاین رنک‌بندی‌شده.
+اقتصاد، بازار، بانک، صندوق، اشتراک استارز، برداشت TON، رفرال،
+ماموریت روزانه‌ی اجباری، رقابت آنلاین رنک‌بندی‌شده.
+پنل مدیریت جداست: admin_panel.py را کنار همین فایل بگذارید.
 
-پنل مدیریت کاملاً جداست: فایل admin_panel.py را کنار همین main.py
-بگذارید — main.py خودش به‌صورت خودکار در لحظه‌ی نیاز آن را import
-می‌کند (هیچ import اجباری در بالای فایل نیست، پس اگر admin_panel.py
-موقتاً نبود، بقیه‌ی ربات بدون مشکل کار می‌کند).
-
-نصب:
-    pip install python-telegram-bot==21.*
-
-اجرا:
-    python main.py
-
-قبل از اجرا BOT_TOKEN و ADMIN_IDS را در «SECTION 1: CONFIG» تنظیم کنید.
+نصب:  pip install python-telegram-bot==21.*
+اجرا:  python main.py
+قبل از اجرا BOT_TOKEN و ADMIN_IDS را در SECTION 1 تنظیم کنید.
 """
-# ============================================================
-#  SECTION 1: CONFIG — تنظیمات، تعرفه‌ها، رنک‌ها
-# ============================================================
-BOT_TOKEN = "8818731091:AAHD4vNWYdFfDD6C0__60vsd4hCDumRuB-Y"          # توکن ربات از BotFather
-ADMIN_IDS = [123456789]                     # آیدی عددی ادمین‌ها (با @userinfobot بگیر)
+# SECTION 1: CONFIG — تنظیمات، تعرفه‌ها، رنک‌ها
+BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"          # توکن ربات از BotFather
+ADMIN_IDS = [6188951798]                    # آیدی عددی ادمین (فقط همین آیدی دسترسی داره)
 DB_PATH = "liber.db"
-
-ADMIN_SECRET_COMMAND = "/root_gate_7719"
+ADMIN_SECRET_COMMAND = "/admin"
 
 FORCE_JOIN_CHANNELS = [
     {"id": "@Libercoin1", "title": "کانال LIBER", "url": "https://t.me/Libercoin1"},
+    {"id": "@Libercoin2", "title": "گروه LIBER", "url": "https://t.me/Libercoin2"},
 ]
+# کانال سفارشات: لاگ خودکار هر سفارش/آپدیت وضعیت؛ کاربرها نیازی به عضویت ندارن.
+ORDERS_CHANNEL_ID = "@Libercoin23"
 
 MARKET_BASE_PRICE = 100
 BUY_FEE_PERCENT = 2
@@ -131,9 +123,7 @@ def reward_for_rank(rank_index: int) -> int:
     return MATCH_BASE_REWARD * (2 ** rank_index)
 
 
-# ============================================================
-#  SECTION 2: DATABASE — لایه‌ی دیتابیس (SQLite)
-# ============================================================
+# SECTION 2: DATABASE — لایه‌ی دیتابیس (SQLite)
 import sqlite3
 from contextlib import contextmanager
 
@@ -808,9 +798,7 @@ def all_user_ids():
         return [r["user_id"] for r in conn.execute("SELECT user_id FROM users WHERE is_banned = 0").fetchall()]
 
 
-# ============================================================
-#  SECTION 3: KEYBOARDS — دکمه‌های شیشه‌ای
-# ============================================================
+# SECTION 3: KEYBOARDS — دکمه‌های شیشه‌ای
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 
@@ -851,9 +839,19 @@ def main_menu_keyboard(is_admin=False):
         [InlineKeyboardButton("🎨 فروشگاه ظاهری", callback_data="menu_cosmetic"),
          InlineKeyboardButton("💸 ارسال LIBER", callback_data="menu_transfer")],
         [InlineKeyboardButton("🎫 باشگاه مشتریان (۴ ماموریت هفتگی)", callback_data="menu_club")],
+        [InlineKeyboardButton("🏅 لیگ کشورها", callback_data="league_menu"),
+         InlineKeyboardButton("🎓 منتورشیپ", callback_data="mentor_menu")],
+        [InlineKeyboardButton("🗺 همسایگی کشورها", callback_data="neighbors_menu"),
+         InlineKeyboardButton("🔎 پروفایل عمومی", callback_data="profile_lookup_start")],
+        [InlineKeyboardButton("🎖 برترین‌های سرور", callback_data="hall_of_fame"),
+         InlineKeyboardButton("⚙️ تنظیمات", callback_data="settings_menu")],
+        [InlineKeyboardButton("🧾 تاریخچه‌ی تراکنش‌ها", callback_data="tx_history")],
+        [InlineKeyboardButton("🔎 پیگیری سفارش", callback_data="track_order_start"),
+         InlineKeyboardButton("📞 تماس با پشتیبانی", callback_data="support_contact_start")],
         [InlineKeyboardButton("🎯 ماموریت روزانه (اجباری)", callback_data="daily_mission")],
         [InlineKeyboardButton("⚔️ رقابت آنلاین", callback_data="competition_menu")],
-        [InlineKeyboardButton("🎁 گیفت استارز (بوست پست)", callback_data="giftboost_menu")],
+        [InlineKeyboardButton("🎁 گیفت استارز (بوست پست)", callback_data="giftboost_menu"),
+         InlineKeyboardButton("🚀 حمایت از کانال (بوست)", callback_data="channel_boost_menu")],
         [InlineKeyboardButton("❓ راهنما", callback_data="menu_help")],
     ]
     if is_admin:
@@ -871,6 +869,7 @@ def market_keyboard():
          InlineKeyboardButton("🔴 فروش لیبر", callback_data="market_sell")],
         [InlineKeyboardButton("🎚 خرید با استپر", callback_data="market_stepper:buy"),
          InlineKeyboardButton("🎚 فروش با استپر", callback_data="market_stepper:sell")],
+        [InlineKeyboardButton("📊 نمودار ۲۴ ساعت اخیر", callback_data="market_chart")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")],
     ])
 
@@ -932,6 +931,7 @@ def admin_panel_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📤 درخواست‌های برداشت", callback_data="admin_pending_withdraws")],
         [InlineKeyboardButton("🎁 سفارش‌های گیفت در انتظار", callback_data="admin_pending_giftboost")],
+        [InlineKeyboardButton("🚀 سفارش‌های بوست کانال در انتظار", callback_data="admin_pending_channelboost")],
         [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats")],
         [InlineKeyboardButton("💰 افزودن سکه/لیبر به کاربر", callback_data="admin_give_currency")],
         [InlineKeyboardButton("🎫 فعال‌سازی دستی اشتراک", callback_data="admin_grant_sub")],
@@ -978,9 +978,7 @@ def competition_menu_keyboard():
     ])
 
 
-# ============================================================
-#  SECTION 4: COMPETITION HANDLERS — رقابت آنلاین رنک‌بندی‌شده
-# ============================================================
+# SECTION 4: COMPETITION HANDLERS — رقابت آنلاین رنک‌بندی‌شده
 import time
 import random
 import logging
@@ -1338,9 +1336,7 @@ async def competition_router(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await handler(update, context)
 
 
-# ============================================================
-#  SECTION 5: USER HANDLERS — منو، بازار، بانک، صندوق، اشتراک، برداشت
-# ============================================================
+# SECTION 5: USER HANDLERS — منو، بازار، بانک، صندوق، اشتراک، برداشت
 import calendar
 
 from telegram import LabeledPrice, InlineKeyboardButton
@@ -1387,6 +1383,26 @@ async def is_member_of_all_channels(bot, user_id) -> bool:
     return True
 
 
+async def post_to_orders_channel(bot, text, reply_markup=None):
+    """پیام سفارش/آپدیت وضعیت رو تو کانال سفارشات منتشر می‌کنه؛ اگه ربات
+    ادمین اون کانال نباشه فقط لاگ می‌کنه، کرش نمی‌کنه."""
+    try:
+        await bot.send_message(ORDERS_CHANNEL_ID, text, reply_markup=reply_markup)
+    except TelegramError as e:
+        logger.warning(f"ارسال به کانال سفارشات ناموفق بود: {e}")
+
+
+async def _show_onboarding_or_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """منطق کامل (قوانین/کشور/منو) برای کوتاه ماندن این فایل به handlers_extra.py منتقل شده."""
+    import handlers_extra
+    await handlers_extra.show_onboarding_or_menu(update, context, send_main_menu)
+
+
+async def onboarding_accept_rules_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import handlers_extra
+    await handlers_extra.onboarding_accept_rules_callback(update, context)
+
+
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     referred_by = None
@@ -1419,7 +1435,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    await send_main_menu(update, context, greet=True)
+    await _show_onboarding_or_menu(update, context)
 
 
 async def send_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, greet=False):
@@ -1441,7 +1457,7 @@ async def check_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     q = update.callback_query
     if await is_member_of_all_channels(context.bot, q.from_user.id):
         await q.answer()
-        await send_main_menu(update, context, greet=True)
+        await _show_onboarding_or_menu(update, context)
     else:
         await q.answer("هنوز در همه‌ی کانال‌ها عضو نشده‌اید ❌", show_alert=True)
 
@@ -1769,14 +1785,30 @@ async def daily_mission_callback(update: Update, context: ContextTypes.DEFAULT_T
         liber_reward = round(liber_reward * (1 + bonus_pct / 100), 2)
         xp_reward = round(xp_reward * (1 + bonus_pct / 100))
         bonus_note = f" (🎫 شامل {bonus_pct}٪ بونوس اشتراک {perks['title']})"
+
+    # بونوس منتورشیپ (اگه کاربر الان شاگرد یک نفره)
+    import handlers_features2
+    mentee_bonus_pct = handlers_features2.get_mentee_bonus_percent(user_id)
+    if mentee_bonus_pct:
+        liber_reward = round(liber_reward * (1 + mentee_bonus_pct / 100), 2)
+        bonus_note += f" (🎓 شامل {mentee_bonus_pct}٪ بونوس منتورشیپ)"
+
     update_balance(user_id, liber=liber_reward, xp=xp_reward)
     import handlers_social
     handlers_social.record_club_task_progress(user_id, "daily3")
     with get_conn() as conn:
         conn.execute("UPDATE users SET last_daily = ? WHERE user_id = ?", (now, user_id))
+
+    # به منتور (اگه داره) خبر و پاداش می‌دیم
+    await handlers_features2.apply_mentorship_daily_bonus(user_id, context.bot)
+
+    # استریک روزانه
+    import handlers_features3
+    streak_note = await handlers_features3.record_daily_streak(user_id, context.bot)
+
     await q.edit_message_text(
         f"✅ ماموریت روزانه انجام شد!\n+{liber_reward} LIBER, +{xp_reward} XP{bonus_note}\n\n"
-        "🔓 حالا صندوق رایگان و رقابت آنلاین امروز برات باز شدن!",
+        f"🔓 حالا صندوق رایگان و رقابت آنلاین امروز برات باز شدن!{streak_note}",
         reply_markup=back_keyboard(),
     )
 
@@ -2019,6 +2051,16 @@ async def withdraw_confirm_callback(update: Update, context: ContextTypes.DEFAUL
 
     await q.edit_message_text(WITHDRAW_PENDING_TEXT, reply_markup=back_keyboard())
 
+    await post_to_orders_channel(
+        context.bot,
+        f"📥 سفارش جدید — برداشت TON\n\n"
+        f"🎫 کد پیگیری: #{request_id}\n"
+        f"نوع: برداشت TON\n"
+        f"مقدار: {amount} LIBER (خالص {net})\n"
+        f"آدرس تونکیپر: {address}\n"
+        f"وضعیت: ⏳ در حال بررسی",
+    )
+
     for admin_id in ADMIN_IDS:
         try:
             await context.bot.send_message(
@@ -2093,6 +2135,18 @@ async def text_message_router(update: Update, context: ContextTypes.DEFAULT_TYPE
     if await handlers_competition_boost.boost_text_router(update, context):
         return
 
+    import handlers_features2
+    if await handlers_features2.features2_text_router(update, context):
+        return
+
+    import handlers_features3
+    if await handlers_features3.features3_text_router(update, context):
+        return
+
+    import handlers_support
+    if await handlers_support.support_text_router(update, context):
+        return
+
     awaiting = context.user_data.get("awaiting")
     raw_text = update.message.text.strip()
 
@@ -2148,6 +2202,7 @@ SIMPLE_CALLBACKS = {
     "daily_mission": daily_mission_callback,
     "menu_help": help_callback,
     "check_join": check_join_callback,
+    "onboarding_accept_rules": onboarding_accept_rules_callback,
 }
 
 
@@ -2205,12 +2260,19 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             handled = await handlers_country_alliance.country_alliance_callback_router(update, context)
         if not handled:
             import handlers_competition_boost
-            await handlers_competition_boost.boost_callback_router(update, context)
+            handled = await handlers_competition_boost.boost_callback_router(update, context)
+        if not handled:
+            import handlers_features2
+            handled = await handlers_features2.features2_callback_router(update, context)
+        if not handled:
+            import handlers_features3
+            handled = await handlers_features3.features3_callback_router(update, context)
+        if not handled:
+            import handlers_support
+            await handlers_support.support_callback_router(update, context)
 
 
-# ============================================================
-#  SECTION 6: MAIN — اجرای ربات
-# ============================================================
+# SECTION 6: MAIN — اجرای ربات
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -2275,32 +2337,37 @@ def schedule_jobs(app: Application):
     jq.run_repeating(_server_war_job, interval=180, first=60)
     # ⚡ جایزه‌ی برق‌آسا حذف شد (طبق درخواست کاربر) — دیگر هیچ دوری اجرا نمی‌شود.
     jq.run_repeating(_market_sweep_job, interval=300, first=90)
+    jq.run_repeating(_league_monthly_job, interval=86400, first=260)
+    jq.run_repeating(_reminder_job, interval=86400, first=3600)
 
+
+async def _league_monthly_job(context: ContextTypes.DEFAULT_TYPE):
+    import handlers_features2
+    await handlers_features2.league_monthly_job(context)
+
+async def _reminder_job(context: ContextTypes.DEFAULT_TYPE):
+    import handlers_features2
+    await handlers_features2.reminder_job(context)
 
 async def _market_sweep_job(context: ContextTypes.DEFAULT_TYPE):
     import handlers_market
     await handlers_market.market_sweep_job(context)
 
-
 async def _clan_war_matching_job(context: ContextTypes.DEFAULT_TYPE):
     import handlers_clanwar
     await handlers_clanwar.clan_war_matching_job(context)
-
 
 async def _clan_tournament_job(context: ContextTypes.DEFAULT_TYPE):
     import handlers_clanwar
     await handlers_clanwar.clan_tournament_job(context)
 
-
 async def _server_war_job(context: ContextTypes.DEFAULT_TYPE):
     import handlers_social
     await handlers_social.server_war_matching_job(context)
 
-
 async def _referral_monthly_job(context: ContextTypes.DEFAULT_TYPE):
     import handlers_bonus
     await handlers_bonus.referral_monthly_reward_job(context)
-
 
 async def _vip_tournament_job(context: ContextTypes.DEFAULT_TYPE):
     import handlers_bonus
@@ -2314,6 +2381,9 @@ async def _fluctuate_market_job(context: ContextTypes.DEFAULT_TYPE):
 
     import handlers_extra
     await handlers_extra.resolve_predictions_job(context)
+
+    import handlers_features2
+    handlers_features2.record_price_history(new_price)
 
 
 def main():
