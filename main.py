@@ -11,7 +11,7 @@ LIBER Telegram Bot — main.py
 قبل از اجرا BOT_TOKEN و ADMIN_IDS را در SECTION 1 تنظیم کنید.
 """
 # SECTION 1: CONFIG — تنظیمات، تعرفه‌ها، رنک‌ها
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"          # توکن ربات از BotFather
+BOT_TOKEN = "8818731091:AAHD4vNWYdFfDD6C0__60vsd4hCDumRuB-Y"          # توکن ربات از BotFather
 ADMIN_IDS = [6188951798]                    # آیدی عددی ادمین (فقط همین آیدی دسترسی داره)
 DB_PATH = "liber.db"
 ADMIN_SECRET_COMMAND = "/admin"
