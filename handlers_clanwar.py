@@ -105,6 +105,9 @@ def _ensure_tables():
 
 
 def _get_clan_profile(alliance_id):
+    """باگ دفاعی رفع‌شده: قبلاً اگه این تابع بدون عبور از یک callback که اول _ensure_tables()
+    رو صدا می‌زنه فراخوانی می‌شد (مثلاً از یک فایل دیگه)، با OperationalError کرش می‌کرد."""
+    _ensure_tables()
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM clan_profile WHERE alliance_id = ?", (alliance_id,)).fetchone()
         if row:
