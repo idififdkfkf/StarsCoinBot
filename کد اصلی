@@ -1,0 +1,3991 @@
+<!DOCTYPE html>  <html lang="fa" dir="rtl">  
+<head>  
+<meta charset="UTF-8">  
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">  
+<title>LIBER NEXUS X</title>  <style>  
+*{  
+ box-sizing:border-box;  
+ margin:0;  
+ padding:0;  
+ -webkit-tap-highlight-color:transparent  
+}  
+  
+:root{  
+ --bg:#01040a;  
+ --panel:rgba(5,15,29,.84);  
+ --panel2:rgba(7,25,45,.78);  
+ --blue:#00eaff;  
+ --blue2:#0877ff;  
+ --gold:#ffd83d;  
+ --gold2:#ff9900;  
+ --cyan:#65f7ff;  
+ --green:#2dffae;  
+ --red:#ff416c;  
+ --white:#f5fbff;  
+ --muted:#7990aa;  
+}  
+  
+html,body{  
+ min-height:100%;  
+ background:#01040a;  
+ color:var(--white);  
+ font-family:Tahoma,Arial,sans-serif;  
+ overflow-x:hidden  
+}  
+  
+body{  
+ background:  
+ radial-gradient(circle at 50% -15%,rgba(0,234,255,.25),transparent 35%),  
+ radial-gradient(circle at 100% 45%,rgba(255,216,61,.13),transparent 30%),  
+ radial-gradient(circle at 0 80%,rgba(8,119,255,.16),transparent 32%),  
+ #01040a;  
+}  
+  
+body:before{  
+ content:"";  
+ position:fixed;  
+ inset:0;  
+ pointer-events:none;  
+ opacity:.25;  
+ background-image:  
+ radial-gradient(circle,rgba(0,234,255,.8) 1px,transparent 1.6px),  
+ radial-gradient(circle,rgba(255,216,61,.7) 1px,transparent 1.6px);  
+ background-size:75px 75px,121px 121px;  
+ background-position:10px 15px,50px 80px;  
+ animation:stars 25s linear infinite  
+}  
+  
+@keyframes stars{  
+ to{  
+  background-position:110px 120px,-10px -20px  
+ }  
+}  
+  
+button,input{  
+ font-family:inherit  
+}  
+  
+button{  
+ border:0;  
+ color:white;  
+ cursor:pointer  
+}  
+  
+button:active{  
+ transform:scale(.94)  
+}  
+  
+.app{  
+ width:min(520px,100%);  
+ min-height:100vh;  
+ margin:auto;  
+ position:relative;  
+ padding-bottom:90px  
+}  
+  
+.screen{  
+ min-height:100vh;  
+ padding:15px;  
+ animation:screenIn .45s ease  
+}  
+  
+@keyframes screenIn{  
+ from{  
+  opacity:0;  
+  transform:translateY(18px) scale(.98)  
+ }  
+ to{  
+  opacity:1;  
+  transform:none  
+ }  
+}  
+  
+.hidden{  
+ display:none!important  
+}  
+  
+.center{  
+ text-align:center  
+}  
+  
+/* =========================  
+   INTRO  
+========================= */  
+  
+.intro{  
+ min-height:100vh;  
+ display:grid;  
+ place-items:center;  
+ position:relative  
+}  
+  
+.introCore{  
+ width:340px;  
+ height:500px;  
+ position:relative;  
+ display:flex;  
+ flex-direction:column;  
+ align-items:center;  
+ justify-content:center  
+}  
+  
+.orbit{  
+ position:absolute;  
+ left:50%;  
+ top:42%;  
+ transform:translate(-50%,-50%);  
+ border-radius:50%;  
+ pointer-events:none  
+}  
+  
+.o1{  
+ width:170px;  
+ height:170px;  
+ border:1px solid rgba(0,234,255,.7);  
+ animation:orbit 4s linear infinite  
+}  
+  
+.o2{  
+ width:250px;  
+ height:250px;  
+ border:1px solid rgba(255,216,61,.35);  
+ animation:orbit 7s linear infinite reverse  
+}  
+  
+.o3{  
+ width:340px;  
+ height:340px;  
+ border:1px dashed rgba(0,234,255,.25);  
+ animation:orbit 13s linear infinite  
+}  
+  
+@keyframes orbit{  
+ to{  
+  transform:translate(-50%,-50%) rotate(360deg)  
+ }  
+}  
+  
+.core{  
+ width:125px;  
+ height:125px;  
+ border-radius:50%;  
+ display:grid;  
+ place-items:center;  
+ position:relative;  
+ z-index:2;  
+ font-size:62px;  
+ font-weight:1000;  
+ color:#051525;  
+ background:  
+ radial-gradient(circle at 27% 18%,  
+ #fff 0,  
+ #fff7ad 12%,  
+ #ffe34b 34%,  
+ #ffb800 57%,  
+ #00eaff 61%,  
+ #006cff 100%);  
+ border:6px solid #fff2a0;  
+ box-shadow:  
+ 0 0 30px rgba(255,216,61,.8),  
+ 0 0 80px rgba(0,234,255,.5),  
+ inset 0 8px 14px white;  
+ animation:coreFloat 2.3s ease-in-out infinite  
+}  
+  
+@keyframes coreFloat{  
+ 50%{  
+  transform:translateY(-12px) rotateY(20deg) scale(1.04)  
+ }  
+}  
+  
+.introTitle{  
+ margin-top:45px;  
+ font-size:45px;  
+ letter-spacing:9px;  
+ font-weight:1000;  
+ background:linear-gradient(  
+  90deg,  
+  #fff,  
+  #00eaff,  
+  #fff,  
+  #ffd83d,  
+  #00eaff,  
+  #fff  
+ );  
+ background-size:400%;  
+ -webkit-background-clip:text;  
+ color:transparent;  
+ animation:rgbText 3s linear infinite  
+}  
+  
+@keyframes rgbText{  
+ to{  
+  background-position:400%  
+ }  
+}  
+  
+.neonSub{  
+ color:var(--muted);  
+ font-size:9px;  
+ letter-spacing:5px;  
+ margin-top:8px  
+}  
+  
+/* =========================  
+   HEADER  
+========================= */  
+  
+.header{  
+ display:flex;  
+ align-items:center;  
+ justify-content:space-between;  
+ margin-bottom:14px  
+}  
+  
+.brand{  
+ display:flex;  
+ align-items:center;  
+ gap:10px  
+}  
+  
+.logoMini{  
+ width:45px;  
+ height:45px;  
+ border-radius:15px;  
+ display:grid;  
+ place-items:center;  
+ color:#071421;  
+ font-size:23px;  
+ font-weight:1000;  
+ background:  
+ linear-gradient(145deg,  
+ #fff,  
+ #ffe96b 35%,  
+ #ffb900 58%,  
+ #00eaff 60%,  
+ #0075ff);  
+ border:2px solid #fff4a0;  
+ box-shadow:  
+ 0 0 20px rgba(0,234,255,.35),  
+ 0 0 20px rgba(255,216,61,.28)  
+}  
+  
+.title{  
+ font-size:16px;  
+ font-weight:1000  
+}  
+  
+.sub{  
+ color:var(--muted);  
+ font-size:8px;  
+ margin-top:4px  
+}  
+  
+/* =========================  
+   CARDS  
+========================= */  
+  
+.card{  
+ position:relative;  
+ overflow:hidden;  
+ padding:15px;  
+ margin-bottom:10px;  
+ border-radius:25px;  
+ border:1px solid rgba(0,234,255,.18);  
+ background:  
+ linear-gradient(145deg,  
+ rgba(9,31,53,.9),  
+ rgba(2,8,17,.94));  
+ box-shadow:  
+ 0 20px 65px rgba(0,0,0,.48),  
+ inset 0 0 35px rgba(0,234,255,.035)  
+}  
+  
+.card:before{  
+ content:"";  
+ position:absolute;  
+ width:200px;  
+ height:200px;  
+ right:-100px;  
+ top:-110px;  
+ border-radius:50%;  
+ background:radial-gradient(  
+  circle,  
+  rgba(0,234,255,.17),  
+  transparent 70%  
+ );  
+ pointer-events:none  
+}  
+  
+.card:after{  
+ content:"";  
+ position:absolute;  
+ inset:0;  
+ pointer-events:none;  
+ border-radius:25px;  
+ background:linear-gradient(  
+  115deg,  
+  transparent 20%,  
+  rgba(255,255,255,.025) 50%,  
+  transparent 80%  
+ );  
+ animation:sheen 5s linear infinite  
+}  
+  
+@keyframes sheen{  
+ from{transform:translateX(-100%)}  
+ to{transform:translateX(100%)}  
+}  
+  
+/* =========================  
+   BUTTON  
+========================= */  
+  
+.btn{  
+ width:100%;  
+ padding:14px;  
+ border-radius:18px;  
+ font-weight:1000;  
+ background:  
+ linear-gradient(135deg,  
+ #006cff,  
+ #00eaff);  
+ border:1px solid rgba(255,255,255,.15);  
+ box-shadow:  
+ 0 10px 30px rgba(0,190,255,.22);  
+ position:relative;  
+ overflow:hidden  
+}  
+  
+.btn:after{  
+ content:"";  
+ position:absolute;  
+ width:70px;  
+ height:100%;  
+ top:0;  
+ left:-100px;  
+ background:linear-gradient(  
+  90deg,  
+  transparent,  
+  rgba(255,255,255,.5),  
+  transparent  
+ );  
+ transform:skewX(-20deg);  
+ animation:buttonShine 3s infinite  
+}  
+  
+@keyframes buttonShine{  
+ 0%,55%{left:-100px}  
+ 100%{left:120%}  
+}  
+  
+.btn.gold{  
+ color:#241800;  
+ background:  
+ linear-gradient(135deg,  
+ #ff9900,  
+ #ffd83d,  
+ #fff0a0)  
+}  
+  
+.btn.green{  
+ color:#03170f;  
+ background:  
+ linear-gradient(135deg,  
+ #069b68,  
+ #2dffae)  
+}  
+  
+.btn.red{  
+ background:linear-gradient(135deg,#a8173e,#ff416c)  
+}  
+  
+/* =========================  
+   COIN  
+========================= */  
+  
+.coin{  
+ width:105px;  
+ height:105px;  
+ margin:auto;  
+ border-radius:50%;  
+ display:grid;  
+ place-items:center;  
+ position:relative;  
+ font-size:43px;  
+ font-weight:1000;  
+ color:#071b31;  
+ background:  
+ radial-gradient(circle at 28% 18%,  
+ #fff 0,  
+ #fff8b0 12%,  
+ #ffe34a 35%,  
+ #ffc018 57%,  
+ #00eaff 61%,  
+ #006cff 100%);  
+ border:6px solid #fff2a0;  
+ box-shadow:  
+ 0 0 32px rgba(255,216,61,.75),  
+ 0 0 70px rgba(0,234,255,.42),  
+ inset 0 8px 13px white,  
+ inset 0 -17px 25px rgba(0,55,110,.5);  
+ animation:coinFloat 2.2s ease-in-out infinite  
+}  
+  
+@keyframes coinFloat{  
+ 50%{  
+  transform:translateY(-7px) rotateY(18deg)  
+ }  
+}  
+  
+.coin:before,  
+.coin:after{  
+ content:"";  
+ position:absolute;  
+ border-radius:50%;  
+ pointer-events:none  
+}  
+  
+.coin:before{  
+ inset:-14px;  
+ border:2px solid rgba(0,234,255,.55);  
+ animation:spin 4s linear infinite  
+}  
+  
+.coin:after{  
+ inset:-25px;  
+ border:1px dashed rgba(255,216,61,.3);  
+ animation:spin 8s linear infinite reverse  
+}  
+  
+@keyframes spin{  
+ to{  
+  transform:rotate(360deg)  
+ }  
+}  
+  
+/* =========================  
+   BALANCE  
+========================= */  
+  
+.balance{  
+ font-size:32px;  
+ font-weight:1000;  
+ margin-top:13px  
+}  
+  
+.balance small{  
+ color:var(--gold);  
+ font-size:10px  
+}  
+  
+/* =========================  
+   MINER  
+========================= */  
+  
+.minerWrap{  
+ width:230px;  
+ height:230px;  
+ margin:18px auto;  
+ display:grid;  
+ place-items:center;  
+ position:relative  
+}  
+  
+.miner{  
+ width:165px;  
+ height:165px;  
+ border-radius:50%;  
+ position:relative;  
+ z-index:2;  
+ display:grid;  
+ place-items:center;  
+ font-size:65px;  
+ font-weight:1000;  
+ color:#061a31;  
+ background:  
+ radial-gradient(circle at 28% 17%,  
+ #fff,  
+ #fff6a0 12%,  
+ #ffe14a 34%,  
+ #ffbd00 57%,  
+ #00eaff 61%,  
+ #006cff 100%);  
+ border:7px solid #fff1a0;  
+ box-shadow:  
+ 0 0 38px rgba(255,216,61,.8),  
+ 0 0 90px rgba(0,234,255,.35),  
+ inset 0 9px 15px white,  
+ inset 0 -22px 28px rgba(0,50,100,.5);  
+ transition:.1s  
+}  
+  
+.minerRing{  
+ position:absolute;  
+ inset:8px;  
+ border-radius:50%;  
+ border:2px solid rgba(0,234,255,.7);  
+ box-shadow:  
+ 0 0 25px rgba(0,234,255,.4);  
+ animation:spin 4s linear infinite  
+}  
+  
+.minerRing2{  
+ position:absolute;  
+ inset:-5px;  
+ border-radius:50%;  
+ border:1px dashed rgba(255,216,61,.6);  
+ animation:spin 8s linear infinite reverse  
+}  
+  
+.minerRing3{  
+ position:absolute;  
+ inset:-19px;  
+ border-radius:50%;  
+ border:1px solid rgba(0,234,255,.2);  
+ animation:spin 12s linear infinite  
+}  
+  
+.miner.hit{  
+ animation:minerHit .22s ease  
+}  
+  
+@keyframes minerHit{  
+ 0%{transform:scale(1)}  
+ 35%{transform:scale(.87) rotate(-3deg)}  
+ 70%{transform:scale(1.08) rotate(3deg)}  
+ 100%{transform:scale(1)}  
+}  
+  
+/* =========================  
+   STATS  
+========================= */  
+  
+.stats{  
+ display:grid;  
+ grid-template-columns:repeat(3,1fr);  
+ gap:7px;  
+ margin-bottom:10px  
+}  
+  
+.stat{  
+ text-align:center;  
+ padding:12px 3px;  
+ border-radius:17px;  
+ background:#041225;  
+ border:1px solid rgba(0,234,255,.13)  
+}  
+  
+.stat b{  
+ display:block;  
+ font-size:14px  
+}  
+  
+.stat span{  
+ color:var(--muted);  
+ font-size:8px  
+}  
+  
+/* =========================  
+   MENU  
+========================= */  
+  
+.menuGrid{  
+ display:grid;  
+ grid-template-columns:repeat(3,1fr);  
+ gap:8px  
+}  
+  
+.menu{  
+ height:90px;  
+ border-radius:20px;  
+ position:relative;  
+ overflow:hidden;  
+ background:  
+ linear-gradient(145deg,  
+ #0b2c4a,  
+ #030b17);  
+ border:1px solid rgba(0,234,255,.17);  
+ box-shadow:  
+ inset 0 0 25px rgba(0,234,255,.035),  
+ 0 8px 25px rgba(0,0,0,.2);  
+ transition:.2s  
+}  
+  
+.menu:hover{  
+ transform:translateY(-3px);  
+ border-color:rgba(255,216,61,.45)  
+}  
+  
+.menu span{  
+ display:block;  
+ font-size:29px;  
+ margin-bottom:7px;  
+ filter:drop-shadow(0 0 8px rgba(0,234,255,.45));  
+ animation:emojiFloat 2.5s ease-in-out infinite  
+}  
+  
+.menu b{  
+ font-size:9px  
+}  
+  
+@keyframes emojiFloat{  
+ 50%{  
+  transform:translateY(-3px) rotate(4deg)  
+ }  
+}  
+  
+/* =========================  
+   INPUT  
+========================= */  
+  
+label{  
+ display:block;  
+ color:var(--muted);  
+ font-size:9px;  
+ margin:11px 0 5px  
+}  
+  
+input{  
+ width:100%;  
+ padding:14px;  
+ border-radius:16px;  
+ color:white;  
+ background:#020914;  
+ border:1px solid #174360;  
+ outline:none  
+}  
+  
+input:focus{  
+ border-color:var(--blue);  
+ box-shadow:0 0 22px rgba(0,234,255,.15)  
+}  
+  
+/* =========================  
+   PROFILE  
+========================= */  
+  
+.profileAvatar{  
+ width:105px;  
+ height:105px;  
+ border-radius:50%;  
+ object-fit:cover;  
+ border:3px solid var(--blue);  
+ box-shadow:  
+ 0 0 30px rgba(0,234,255,.45);  
+ position:relative  
+}  
+  
+.profileFrame{  
+ padding:7px;  
+ display:inline-block;  
+ border-radius:50%;  
+ background:  
+ conic-gradient(  
+  #00eaff,  
+  #0877ff,  
+  #ffd83d,  
+  #ff9900,  
+  #00eaff  
+ );  
+ animation:frameSpin 4s linear infinite  
+}  
+  
+@keyframes frameSpin{  
+ to{  
+  filter:hue-rotate(360deg)  
+ }  
+}  
+  
+.profileName{  
+ font-size:22px;  
+ font-weight:1000;  
+ margin-top:12px;  
+ animation:nameRGB 3s linear infinite  
+}  
+  
+@keyframes nameRGB{  
+ 0%{color:#00eaff}  
+ 33%{color:#ffd83d}  
+ 66%{color:#fff}  
+ 100%{color:#00eaff}  
+}  
+  
+.profileEmoji{  
+ display:inline-block;  
+ font-size:28px;  
+ vertical-align:middle;  
+ animation:emoji3d 1.7s ease-in-out infinite  
+}  
+  
+@keyframes emoji3d{  
+ 0%,100%{  
+  transform:translateY(0) rotateY(0) scale(1)  
+ }  
+ 50%{  
+  transform:translateY(-6px) rotateY(25deg) scale(1.12)  
+ }  
+}  
+  
+/* =========================  
+   PREMIUM  
+========================= */  
+  
+.premium{  
+ border:1px solid rgba(255,216,61,.35);  
+ background:  
+ linear-gradient(  
+  145deg,  
+  rgba(255,180,0,.13),  
+  rgba(0,234,255,.08),  
+  rgba(3,10,20,.9)  
+ )  
+}  
+  
+.premiumIcon{  
+ font-size:58px;  
+ animation:premiumFloat 2s ease-in-out infinite  
+}  
+  
+@keyframes premiumFloat{  
+ 50%{  
+  transform:translateY(-8px) rotate(8deg) scale(1.08)  
+ }  
+}  
+  
+/* =========================  
+   SERVICE  
+========================= */  
+  
+.serviceGrid{  
+ display:grid;  
+ grid-template-columns:repeat(2,1fr);  
+ gap:9px  
+}  
+  
+.service{  
+ min-height:115px;  
+ padding:15px;  
+ border-radius:20px;  
+ background:  
+ linear-gradient(145deg,#082642,#030c18);  
+ border:1px solid rgba(0,234,255,.16);  
+ transition:.2s  
+}  
+  
+.service:hover{  
+ transform:translateY(-3px)  
+}  
+  
+.serviceIcon{  
+ font-size:35px;  
+ margin-bottom:7px  
+}  
+  
+.service b{  
+ font-size:11px  
+}  
+  
+.service small{  
+ display:block;  
+ color:var(--muted);  
+ font-size:8px;  
+ margin-top:5px;  
+ line-height:1.8  
+}  
+  
+/* =========================  
+   ORDER  
+========================= */  
+  
+.order{  
+ padding:13px;  
+ border-radius:18px;  
+ background:#041426;  
+ border:1px solid rgba(0,234,255,.13);  
+ margin-top:8px  
+}  
+  
+.order.pending{  
+ border-color:rgba(255,216,61,.3)  
+}  
+  
+.order.done{  
+ border-color:rgba(45,255,174,.3)  
+}  
+  
+/* =========================  
+   MISSION  
+========================= */  
+  
+.mission{  
+ padding:13px;  
+ border-radius:17px;  
+ background:#041426;  
+ border:1px solid rgba(0,234,255,.1);  
+ margin-top:8px  
+}  
+  
+.mission.done{  
+ border-color:#20c887;  
+ background:#06271d  
+}  
+  
+/* =========================  
+   PROGRESS  
+========================= */  
+  
+.progress{  
+ height:8px;  
+ border-radius:20px;  
+ overflow:hidden;  
+ background:#020812  
+}  
+  
+.progress i{  
+ display:block;  
+ height:100%;  
+ width:0;  
+ background:  
+ linear-gradient(  
+  90deg,  
+  #006cff,  
+  #00eaff,  
+  #ffd83d,  
+  #ff9900  
+ );  
+ box-shadow:0 0 18px #00eaff;  
+ transition:.4s  
+}  
+  
+/* =========================  
+   TOAST  
+========================= */  
+  
+.toast{  
+ position:fixed;  
+ z-index:999;  
+ top:12px;  
+ left:50%;  
+ transform:translate(-50%,-25px);  
+ opacity:0;  
+ padding:12px 17px;  
+ border-radius:16px;  
+ background:#09223a;  
+ border:1px solid #1678a3;  
+ font-size:10px;  
+ transition:.25s;  
+ white-space:nowrap;  
+ box-shadow:0 10px 30px rgba(0,0,0,.5)  
+}  
+  
+.toast.show{  
+ opacity:1;  
+ transform:translate(-50%,0)  
+}  
+  
+/* =========================  
+   FX  
+========================= */  
+  
+.plus{  
+ position:fixed;  
+ z-index:1000;  
+ color:#ffe45d;  
+ font-size:20px;  
+ font-weight:1000;  
+ text-shadow:0 0 17px #00eaff;  
+ pointer-events:none;  
+ animation:plusFly .75s ease-out forwards  
+}  
+  
+@keyframes plusFly{  
+ to{  
+  transform:translateY(-75px) scale(1.25);  
+  opacity:0  
+ }  
+}  
+  
+.spark{  
+ position:fixed;  
+ z-index:999;  
+ width:5px;  
+ height:5px;  
+ border-radius:50%;  
+ background:#00eaff;  
+ box-shadow:0 0 14px #00eaff;  
+ pointer-events:none;  
+ animation:sparkFly .65s ease-out forwards  
+}  
+  
+@keyframes sparkFly{  
+ to{  
+  transform:translate(var(--x),var(--y)) scale(0);  
+  opacity:0  
+ }  
+}  
+  
+.flash{  
+ position:fixed;  
+ z-index:998;  
+ inset:0;  
+ pointer-events:none;  
+ background:  
+ radial-gradient(  
+  circle,  
+  rgba(255,230,70,.35),  
+  rgba(0,234,255,.1),  
+  transparent 65%  
+ );  
+ animation:flash .2s forwards  
+}  
+  
+@keyframes flash{  
+ 0%{opacity:0}  
+ 30%{opacity:1}  
+ 100%{opacity:0}  
+}  
+  
+/* =========================  
+   NAV  
+========================= */  
+  
+.nav{  
+ position:fixed;  
+ z-index:500;  
+ bottom:7px;  
+ left:50%;  
+ transform:translateX(-50%);  
+ width:min(490px,calc(100% - 14px));  
+ height:63px;  
+ display:grid;  
+ grid-template-columns:repeat(5,1fr);  
+ border-radius:23px;  
+ background:rgba(2,11,23,.94);  
+ border:1px solid rgba(0,234,255,.18);  
+ box-shadow:0 15px 55px rgba(0,0,0,.65);  
+ backdrop-filter:blur(20px)  
+}  
+  
+.nav button{  
+ background:none;  
+ color:#607890;  
+ font-size:7px  
+}  
+  
+.nav b{  
+ display:block;  
+ font-size:19px;  
+ margin-bottom:2px  
+}  
+  
+.nav .active{  
+ color:#00eaff;  
+ text-shadow:0 0 14px #00eaff  
+}  
+  
+/* =========================  
+   SWITCH  
+========================= */  
+  
+.switch{  
+ display:flex;  
+ align-items:center;  
+ justify-content:space-between;  
+ padding:13px;  
+ border-radius:17px;  
+ background:#041426;  
+ margin-top:8px  
+}  
+  
+.toggle{  
+ width:54px;  
+ height:29px;  
+ border-radius:30px;  
+ background:#16283a;  
+ padding:3px;  
+ transition:.3s  
+}  
+  
+.toggle i{  
+ display:block;  
+ width:23px;  
+ height:23px;  
+ border-radius:50%;  
+ background:#607890;  
+ transition:.3s  
+}  
+  
+.toggle.on{  
+ background:#006cff  
+}  
+  
+.toggle.on i{  
+ transform:translateX(-23px);  
+ background:#00eaff;  
+ box-shadow:0 0 13px #00eaff  
+}  
+  
+/* =========================  
+   COLOR PICKER  
+========================= */  
+  
+.colorRow{  
+ display:grid;  
+ grid-template-columns:repeat(6,1fr);  
+ gap:7px;  
+ margin-top:10px  
+}  
+  
+.color{  
+ height:35px;  
+ border-radius:12px;  
+ border:2px solid rgba(255,255,255,.1)  
+}  
+  
+.c1{background:#00eaff}  
+.c2{background:#0877ff}  
+.c3{background:#ffd83d}  
+.c4{background:#ff416c}  
+.c5{background:#2dffae}  
+.c6{background:#fff}  
+  
+/* =========================  
+   CAPTCHA  
+========================= */  
+  
+.captchaBox{  
+ padding:15px;  
+ border-radius:24px;  
+ background:  
+ linear-gradient(  
+  145deg,  
+  rgba(0,119,255,.16),  
+  rgba(255,216,61,.07)  
+ );  
+ border:1px solid rgba(0,234,255,.3)  
+}  
+  
+.captchaVisual{  
+ height:165px;  
+ border-radius:25px;  
+ position:relative;  
+ overflow:hidden;  
+ display:grid;  
+ place-items:center;  
+ background:  
+ radial-gradient(circle at 30% 30%,#00eaff,transparent 15%),  
+ radial-gradient(circle at 70% 70%,#ffd83d,transparent 15%),  
+ linear-gradient(135deg,#00152b,#092c4b,#171a05,#003e6d);  
+ background-size:150% 150%;  
+ animation:captchaBG 5s ease infinite  
+}  
+  
+@keyframes captchaBG{  
+ 0%,100%{background-position:0 0}  
+ 50%{background-position:100% 100%}  
+}  
+  
+.captchaRing{  
+ position:absolute;  
+ width:110px;  
+ height:110px;  
+ border-radius:50%;  
+ border:3px solid rgba(0,234,255,.8);  
+ border-left-color:#ffd83d;  
+ border-bottom-color:#fff;  
+ animation:spin 2.5s linear infinite  
+}  
+  
+.captchaCube{  
+ width:65px;  
+ height:65px;  
+ transform:rotate(45deg);  
+ border:2px solid #ffd83d;  
+ box-shadow:0 0 25px #00eaff;  
+ animation:cube 3s linear infinite  
+}  
+  
+@keyframes cube{  
+ to{  
+  transform:rotate(405deg) scale(1.1)  
+ }  
+}  
+  
+.captchaStar{  
+ position:absolute;  
+ font-size:48px;  
+ color:#fff1a0;  
+ text-shadow:  
+ 0 0 10px #00eaff,  
+ 0 0 25px #00eaff;  
+ animation:starPulse 1.2s infinite  
+}  
+  
+@keyframes starPulse{  
+ 50%{  
+  transform:scale(1.18) rotate(12deg)  
+ }  
+}  
+  
+/* =========================  
+   LOADER  
+========================= */  
+  
+.loader{  
+ width:100px;  
+ height:100px;  
+ border-radius:50%;  
+ border:8px solid #102039;  
+ border-top-color:#00eaff;  
+ border-right-color:#ffd83d;  
+ animation:spin 1s linear infinite;  
+ margin:25px auto  
+}  
+  
+/* =========================  
+   RESPONSIVE  
+========================= */  
+  
+@media(max-width:360px){  
+ .menuGrid{  
+  gap:5px  
+ }  
+  
+ .menu{  
+  height:80px  
+ }  
+  
+ .miner{  
+  width:145px;  
+  height:145px  
+ }  
+  
+ .minerWrap{  
+  width:205px;  
+  height:205px  
+ }  
+}  
+</style>  </head>  <body>  <div id="toast" class="toast"></div>  
+<div id="app"></div>  <script>  
+"use strict";  
+  
+/* =========================================================  
+   LIBER NEXUS X  
+   Single File / LocalStorage / Offline  
+========================================================= */  
+  
+const DB_KEY="LIBER_NEXUS_X_FINAL";  
+  
+const DEFAULT={  
+ created:false,  
+ numericId:"",  
+ username:"",  
+ name:"NEXUS",  
+ avatar:"",  
+ emoji:"⚡",  
+  
+ liber:0,  
+ clicks:0,  
+ totalMined:0,  
+  
+ clickLevel:1,  
+ clickPower:.02,  
+  
+ auto:false,  
+ autoLevel:1,  
+ autoReward:2,  
+ lastAuto:0,  
+  
+ premium:false,  
+ premiumUntil:0,  
+  
+ nameColor:"rgb",  
+  
+ background:"",  
+ frame:false,  
+ bioColor:"#00eaff",  
+  
+ missions:{  
+  login:false,  
+  click:false,  
+  upgrade:false  
+ },  
+  
+ weekly:{  
+  week:"",  
+  done:[false,false,false,false,false]  
+ },  
+  
+ orders:[],  
+ notifications:[]  
+};  
+  
+function clone(x){  
+ return JSON.parse(JSON.stringify(x))  
+}  
+  
+function load(){  
+ try{  
+  const x=localStorage.getItem(DB_KEY);  
+  if(!x)return clone(DEFAULT);  
+  
+  const saved=JSON.parse(x);  
+  
+  return Object.assign(  
+   clone(DEFAULT),  
+   saved,  
+   {  
+    missions:Object.assign(  
+     clone(DEFAULT.missions),  
+     saved.missions||{}  
+    ),  
+    weekly:Object.assign(  
+     clone(DEFAULT.weekly),  
+     saved.weekly||{}  
+    )  
+   }  
+  );  
+ }catch(e){  
+  return clone(DEFAULT)  
+ }  
+}  
+  
+let S=load();  
+  
+function save(){  
+ localStorage.setItem(DB_KEY,JSON.stringify(S))  
+}  
+  
+function today(){  
+ return new Date().toISOString().slice(0,10)  
+}  
+  
+function weekId(){  
+ const d=new Date();  
+ const onejan=new Date(d.getFullYear(),0,1);  
+ return Math.ceil((((d-onejan)/86400000)+onejan.getDay()+1)/7)  
+}  
+  
+function fmt(n){  
+ return Number(n||0)  
+  .toFixed(4)  
+  .replace(/\.?0+$/,"")  
+}  
+  
+function esc(v){  
+ return String(v??"").replace(  
+  /[&<>"']/g,  
+  c=>({  
+   "&":"&amp;",  
+   "<":"&lt;",  
+   ">":"&gt;",  
+   '"':"&quot;",  
+   "'":"&#039;"  
+  }[c])  
+ )  
+}  
+  
+function toast(text){  
+ const t=document.getElementById("toast");  
+ t.textContent=text;  
+ t.classList.add("show");  
+  
+ clearTimeout(window.__toast);  
+  
+ window.__toast=setTimeout(  
+  ()=>t.classList.remove("show"),  
+  1900  
+ )  
+}  
+  
+const RANKS=[  
+ "جرقه نوپا",  
+ "کاوشگر نقره‌ای",  
+ "معدن‌چی حرفه‌ای",  
+ "شکارچی طلا",  
+ "استاد کریستال",  
+ "الماس‌کار",  
+ "سلطان LIBER",  
+ "فرمانده NEXUS",  
+ "افسانه LIBER",  
+ "BLUE GOLD LEGEND"  
+];  
+  
+function updateRank(){  
+ return Math.min(  
+  9,  
+  Math.floor(  
+   (S.totalMined+S.clicks/10)/100  
+  )  
+ )  
+}  
+  
+function premiumActive(){  
+ return S.premium && Date.now()<S.premiumUntil  
+}  
+  
+/* =========================================================  
+   INTRO  
+========================================================= */  
+  
+function intro(){  
+  
+ document.getElementById("app").innerHTML=`  
+  
+ <div class="intro">  
+  
+  <div class="introCore">  
+  
+   <div class="orbit o1"></div>  
+   <div class="orbit o2"></div>  
+   <div class="orbit o3"></div>  
+  
+   <div class="core">L</div>  
+  
+   <div class="introTitle">  
+    LIBER  
+   </div>  
+  
+   <div class="neonSub">  
+    BLUE • GOLD • NEXUS • X  
+   </div>  
+  
+   <div style="  
+    margin-top:30px;  
+    font-size:9px;  
+    color:#66839e;  
+    letter-spacing:3px  
+   ">  
+    INITIALIZING NEXUS  
+   </div>  
+  
+  </div>  
+  
+ </div>  
+ `;  
+  
+ setTimeout(  
+  ()=>S.created?home():welcome(),  
+  2200  
+ )  
+}  
+  
+/* =========================================================  
+   WELCOME  
+========================================================= */  
+  
+function welcome(){  
+  
+ document.getElementById("app").innerHTML=`  
+  
+ <div class="screen center" style="padding-top:8vh">  
+  
+  <div class="core">  
+   L  
+  </div>  
+  
+  <div class="introTitle" style="font-size:39px">  
+   LIBER  
+  </div>  
+  
+  <div class="card" style="margin-top:25px">  
+  
+   <div style="font-size:55px">  
+    🧬  
+   </div>  
+  
+   <h2>  
+    NEXUS X  
+   </h2>  
+  
+   <div class="sub">  
+    نسل جدید تجربه LIBER  
+   </div>  
+  
+   <div class="mission">  
+    <div class="sub">  
+     قدرت اولیه ماین  
+    </div>  
+  
+    <b style="  
+     font-size:22px;  
+     color:var(--gold)  
+    ">  
+     +0.0200 LIBER  
+    </b>  
+   </div>  
+  
+   <button  
+    class="btn gold"  
+    style="margin-top:12px"  
+    onclick="account()"  
+   >  
+    🚀 ساخت هویت NEXUS  
+   </button>  
+  
+  </div>  
+  
+ </div>  
+ `  
+}  
+  
+/* =========================================================  
+   ACCOUNT  
+========================================================= */  
+  
+function account(){  
+  
+ document.getElementById("app").innerHTML=`  
+  
+ <div class="screen">  
+  
+  <div class="header">  
+  
+   <div class="brand">  
+  
+    <div class="logoMini">  
+     L  
+    </div>  
+  
+    <div>  
+     <div class="title">  
+      🧬 NEXUS IDENTITY  
+     </div>  
+  
+     <div class="sub">  
+      ساخت هویت سه‌بعدی  
+     </div>  
+    </div>  
+  
+   </div>  
+  
+  </div>  
+  
+  <div class="card">  
+  
+   <div class="center">  
+  
+    <div style="font-size:60px">  
+     🪐  
+    </div>  
+  
+    <h3 style="margin-top:8px">  
+     ساخت پروفایل  
+    </h3>  
+  
+    <div class="sub">  
+     اطلاعات این نسخه روی همین دستگاه ذخیره می‌شود  
+    </div>  
+  
+   </div>  
+  
+   <label>  
+    آیدی عددی  
+   </label>  
+  
+   <input  
+    id="nid"  
+    inputmode="numeric"  
+    maxlength="20"  
+    placeholder="مثلاً 12345678"  
+   >  
+  
+   <label>  
+    Username  
+   </label>  
+  
+   <input  
+    id="usr"  
+    maxlength="32"  
+    placeholder="@username"  
+   >  
+  
+   <label>  
+    نام نمایشی  
+   </label>  
+  
+   <input  
+    id="nm"  
+    maxlength="30"  
+    placeholder="نام شما"  
+   >  
+  
+   <button  
+    class="btn gold"  
+    style="margin-top:13px"  
+    onclick="openCaptcha()"  
+   >  
+    🛡️ ادامه • امنیت NEXUS  
+   </button>  
+  
+  </div>  
+  
+ </div>  
+ `  
+}  
+  
+/* =========================================================  
+   CAPTCHA  
+========================================================= */  
+  
+let CA=0;  
+let CB=0;  
+let OP="";  
+  
+function makeCaptcha(){  
+  
+ CA=Math.floor(Math.random()*16)+4;  
+ CB=Math.floor(Math.random()*14)+2;  
+  
+ OP=["+","-","×"][  
+  Math.floor(Math.random()*3)  
+ ];  
+  
+ if(OP==="-" && CB>CA){  
+  [CA,CB]=[CB,CA]  
+ }  
+}  
+  
+function captchaAnswer(){  
+  
+ if(OP==="+")return CA+CB;  
+ if(OP==="-")return CA-CB;  
+ return CA*CB;  
+}  
+  
+function openCaptcha(){  
+  
+ const nid=document.getElementById("nid").value.trim();  
+ const usr=document.getElementById("usr").value.trim();  
+ const nm=document.getElementById("nm").value.trim();  
+  
+ if(!/^[0-9]{4,20}$/.test(nid))  
+  return toast("❌ آیدی عددی معتبر نیست");  
+  
+ if(!/^[A-Za-z0-9_.@]{3,32}$/.test(usr))  
+  return toast("❌ Username معتبر نیست");  
+  
+ if(nm.length<2)  
+  return toast("❌ نام را وارد کن");  
+  
+ S.numericId=nid;  
+ S.username=usr.replace(/^@/,"");  
+ S.name=nm;  
+  
+ makeCaptcha();  
+  
+ document.getElementById("app").innerHTML=`  
+  
+ <div class="screen center" style="padding-top:6vh">  
+  
+  <div class="card">  
+  
+   <div class="captchaBox">  
+  
+    <div class="captchaVisual">  
+  
+     <div class="captchaRing"></div>  
+  
+     <div class="captchaCube"></div>  
+  
+     <div class="captchaStar">  
+      ✦  
+     </div>  
+  
+    </div>  
+  
+    <h3 style="margin-top:15px">  
+     🛡️ NEXUS CAPTCHA  
+    </h3>  
+  
+    <div class="sub" style="margin:8px 0">  
+     معادله انرژی را حل کن  
+    </div>  
+  
+    <div style="  
+     padding:17px;  
+     border-radius:18px;  
+     background:#020914;  
+     border:1px solid rgba(255,216,61,.35);  
+     color:var(--gold);  
+     font-size:29px;  
+     font-weight:1000;  
+     margin-top:10px  
+    ">  
+     ${CA} ${OP} ${CB} = ?  
+    </div>  
+  
+    <input  
+     id="captchaInput"  
+     type="number"  
+     inputmode="numeric"  
+     placeholder="پاسخ"  
+     style="margin-top:10px"  
+    >  
+  
+    <button  
+     class="btn green"  
+     style="margin-top:10px"  
+     onclick="verifyCaptcha()"  
+    >  
+     ✨ تأیید هویت  
+    </button>  
+  
+   </div>  
+  
+  </div>  
+  
+ </div>  
+ `  
+}  
+  
+function verifyCaptcha(){  
+  
+ const value=Number(  
+  document.getElementById("captchaInput").value  
+ );  
+  
+ if(value!==captchaAnswer()){  
+  
+  makeCaptcha();  
+  
+  toast("❌ پاسخ اشتباه • کپچای جدید");  
+  
+  openCaptcha();  
+  
+  return  
+ }  
+  
+ confirmation()  
+}  
+  
+/* =========================================================  
+   CONFIRM  
+========================================================= */  
+  
+function confirmation(){  
+  
+ let start=performance.now();  
+ const duration=3200;  
+  
+ document.getElementById("app").innerHTML=`  
+  
+ <div class="screen center" style="padding-top:12vh">  
+  
+  <div class="core">  
+   L  
+  </div>  
+  
+  <h2 style="margin-top:25px">  
+   NEXUS ONLINE  
+  </h2>  
+  
+  <div class="sub">  
+   در حال ساخت هویت  
+  </div>  
+  
+  <div class="loader"></div>  
+  
+  <div  
+   id="percent"  
+   style="  
+    font-size:32px;  
+    font-weight:1000;  
+    color:var(--blue)  
+   "  
+  >  
+   0%  
+  </div>  
+  
+  <div class="progress" style="margin-top:13px">  
+   <i id="bar"></i>  
+  </div>  
+  
+ </div>  
+ `;  
+  
+ function tick(now){  
+  
+  const p=Math.min(  
+   100,  
+   Math.floor(((now-start)/duration)*100)  
+  );  
+  
+  const percent=document.getElementById("percent");  
+  const bar=document.getElementById("bar");  
+  
+  if(!percent)return;  
+  
+  percent.textContent=p+"%";  
+  bar.style.width=p+"%";  
+  
+  if(p<100){  
+  
+   requestAnimationFrame(tick)  
+  
+  }else{  
+  
+   S.created=true;  
+   S.missions.login=true;  
+  
+   save();  
+  
+   setTimeout(home,400)  
+  }  
+ }  
+  
+ requestAnimationFrame(tick)  
+}  
+  
+/* =========================================================  
+   DAILY  
+========================================================= */  
+  
+function dailyReset(){  
+  
+ if(!S._day)  
+  S._day=today();  
+  
+ if(S._day!==today()){  
+  
+  S._day=today();  
+  
+  S.missions={  
+   login:true,  
+   click:false,  
+   upgrade:false  
+  };  
+  
+  save()  
+ }  
+}  
+  
+function weeklyReset(){  
+  
+ const w=String(weekId());  
+  
+ if(S.weekly.week!==w){  
+  
+  S.weekly={  
+   week:w,  
+   done:[false,false,false,false,false]  
+  };  
+  
+  save()  
+ }  
+}  
+  
+/* =========================================================  
+   HOME  
+========================================================= */  
+  
+function home(){  
+  
+ dailyReset();  
+ weeklyReset();  
+  
+ const rank=updateRank();  
+  
+ document.getElementById("app").innerHTML=`  
+  
+ <div class="screen">  
+  
+  <div class="header">  
+  
+   <div class="brand">  
+  
+    <div class="logoMini">  
+     L  
+    </div>  
+  
+    <div>  
+     <div class="title">  
+      LIBER NEXUS X  
+     </div>  
+  
+     <div class="sub">  
+      ${esc(S.name)} • ${esc(RANKS[rank])}  
+     </div>  
+    </div>  
+  
+   </div>  
+  
+   <button  
+    class="logoMini"  
+    onclick="profile()"  
+   >  
+    ${esc(S.emoji)}  
+   </button>  
+  
+  </div>  
+  
+  <div class="card center">  
+  
+   <div class="coin">  
+    L  
+   </div>  
+  
+   <div class="balance">  
+    ${fmt(S.liber)}  
+    <small>  
+     LIBER  
+    </small>  
+   </div>  
+  
+   <div class="sub">  
+    موجودی انرژی NEXUS  
+   </div>  
+  
+   <div class="minerWrap">  
+  
+    <div class="minerRing3"></div>  
+    <div class="minerRing2"></div>  
+    <div class="minerRing"></div>  
+  
+    <button  
+     id="miner"  
+     class="miner"  
+     onclick="mine(event)"  
+    >  
+     L  
+    </button>  
+  
+   </div>  
+  
+   <div class="sub">  
+    ⚡ قدرت ماین:  
+    <b style="color:var(--gold)">  
+     ${fmt(S.clickPower)}  
+    </b>  
+    LIBER  
+   </div>  
+  
+  </div>  
+  
+  <div class="stats">  
+  
+   <div class="stat">  
+    <b>${S.clicks}</b>  
+    <span>⛏️ ماین</span>  
+   </div>  
+  
+   <div class="stat">  
+    <b>${S.clickLevel}/100</b>  
+    <span>⚡ کلیک</span>  
+   </div>  
+  
+   <div class="stat">  
+    <b>${S.auto?"ON":"OFF"}</b>  
+    <span>🤖 اتو</span>  
+   </div>  
+  
+  </div>  
+  
+  <div class="card">  
+  
+   <div style="  
+    display:flex;  
+    justify-content:space-between;  
+    align-items:center  
+   ">  
+  
+    <b>  
+     🏆 ${esc(RANKS[rank])}  
+    </b>  
+  
+    <span style="  
+     padding:6px 10px;  
+     border-radius:20px;  
+     background:linear-gradient(  
+      135deg,#ffe66a,#ff9700  
+     );  
+     color:#211600;  
+     font-size:8px;  
+     font-weight:1000  
+    ">  
+     RANK ${rank+1}  
+    </span>  
+  
+   </div>  
+  
+   <div class="progress" style="margin-top:10px">  
+    <i style="width:${S.clicks%100}%"></i>  
+   </div>  
+  
+  </div>  
+  
+  <div class="menuGrid">  
+  
+   <button class="menu" onclick="upgrade()">  
+    <span>⚡</span>  
+    <b>ارتقا</b>  
+   </button>  
+  
+   <button class="menu" onclick="missions()">  
+    <span>🎯</span>  
+    <b>مأموریت</b>  
+   </button>  
+  
+   <button class="menu" onclick="services()">  
+    <span>🚀</span>  
+    <b>خدمات</b>  
+   </button>  
+  
+   <button class="menu" onclick="profile()">  
+    <span>👤</span>  
+    <b>پروفایل</b>  
+   </button>  
+  
+   <button class="menu" onclick="premium()">  
+    <span>👑</span>  
+    <b>Premium</b>  
+   </button>  
+  
+   <button class="menu" onclick="settings()">  
+    <span>⚙️</span>  
+    <b>تنظیمات</b>  
+   </button>  
+  
+  </div>  
+  
+ </div>  
+  
+ ${nav("home")}  
+ `  
+}  
+  
+/* =========================================================  
+   MINING  
+========================================================= */  
+  
+function mine(){  
+  
+ S.liber+=S.clickPower;  
+ S.totalMined+=S.clickPower;  
+ S.clicks++;  
+  
+ S.missions.click=true;  
+  
+ save();  
+  
+ const miner=document.getElementById("miner");  
+  
+ miner.classList.remove("hit");  
+  
+ void miner.offsetWidth;  
+  
+ miner.classList.add("hit");  
+  
+ const rect=miner.getBoundingClientRect();  
+  
+ const flash=document.createElement("div");  
+  
+ flash.className="flash";  
+  
+ document.body.appendChild(flash);  
+  
+ setTimeout(  
+  ()=>flash.remove(),  
+  220  
+ );  
+  
+ const plus=document.createElement("div");  
+  
+ plus.className="plus";  
+  
+ plus.textContent="+"+fmt(S.clickPower);  
+  
+ plus.style.left=  
+  (rect.left+rect.width/2-15)+"px";  
+  
+ plus.style.top=  
+  (rect.top+rect.height/2)+"px";  
+  
+ document.body.appendChild(plus);  
+  
+ setTimeout(  
+  ()=>plus.remove(),  
+  700  
+ );  
+  
+ for(let i=0;i<8;i++){  
+  
+  const spark=document.createElement("div");  
+  
+  spark.className="spark";  
+  
+  spark.style.left=  
+   (rect.left+rect.width/2)+"px";  
+  
+  spark.style.top=  
+   (rect.top+rect.height/2)+"px";  
+  
+  const angle=Math.random()*Math.PI*2;  
+  const distance=45+Math.random()*75;  
+  
+  spark.style.setProperty(  
+   "--x",  
+   Math.cos(angle)*distance+"px"  
+  );  
+  
+  spark.style.setProperty(  
+   "--y",  
+   Math.sin(angle)*distance+"px"  
+  );  
+  
+  document.body.appendChild(spark);  
+  
+  setTimeout(  
+   ()=>spark.remove(),  
+   650  
+  )  
+ }  
+  
+ const balance=document.querySelector(".balance");  
+  
+ if(balance){  
+  
+  balance.innerHTML=  
+   fmt(S.liber)+  
+   ' <small>LIBER</small>';  
+ }  
+}  
+  
+/* =========================================================  
+   UPGRADE  
+========================================================= */  
+  
+function clickCost(){  
+  
+ if(S.clickLevel>=100)  
+  return 0;  
+  
+ return Math.ceil(  
+  23*S.clickLevel*1.12  
+ )  
+}  
+  
+function autoCost(){  
+  
+ if(S.autoLevel>=100)  
+  return 0;  
+  
+ return Math.ceil(  
+  25*S.autoLevel*1.15  
+ )  
+}  
+  
+function upgradeClick(){  
+  
+ if(S.clickLevel>=100)  
+  return toast("⚡ کلیک ماینر MAX است");  
+  
+ const cost=clickCost();  
+  
+ if(S.liber<cost)  
+  return toast("💰 LIBER کافی نیست");  
+  
+ S.liber-=cost;  
+  
+ S.clickLevel++;  
+  
+ S.clickPower=  
+  .02*S.clickLevel;  
+  
+ S.missions.upgrade=true;  
+  
+ save();  
+  
+ toast("⚡ ارتقای ماینر انجام شد");  
+  
+ upgrade()  
+}  
+  
+function activateAuto(){  
+  
+ if(S.auto)  
+  return toast("🤖 اتو ماینر فعال است");  
+  
+ if(S.liber<25)  
+  return toast("💰 حداقل 25 LIBER لازم است");  
+  
+ S.liber-=25;  
+  
+ S.auto=true;  
+ S.autoLevel=1;  
+ S.autoReward=2;  
+ S.lastAuto=Date.now();  
+  
+ save();  
+  
+ toast("🤖 اتو ماینر فعال شد");  
+  
+ upgrade()  
+}  
+  
+function upgradeAuto(){  
+  
+ if(!S.auto)  
+  return toast("اول اتو ماینر را فعال کن");  
+  
+ const cost=autoCost();  
+  
+ if(S.liber<cost)  
+  return toast("💰 LIBER کافی نیست");  
+  
+ S.liber-=cost;  
+  
+ S.autoLevel++;  
+  
+ S.autoReward=  
+  2+(S.autoLevel-1)*.01;  
+  
+ save();  
+  
+ upgrade()  
+}  
+  
+function claimAuto(){  
+  
+ if(!S.auto)  
+  return toast("🤖 اتو ماینر فعال نیست");  
+  
+ const wait=12*60*60*1000;  
+  
+ if(Date.now()-S.lastAuto<wait)  
+  return toast("⏳ پاداش هنوز آماده نیست");  
+  
+ S.liber+=S.autoReward;  
+ S.totalMined+=S.autoReward;  
+ S.lastAuto=Date.now();  
+  
+ save();  
+  
+ toast(  
+  "🎁 +"+fmt(S.autoReward)+" LIBER"  
+ );  
+  
+ upgrade()  
+}  
+  
+function upgrade(){  
+  
+ document.getElementById("app").innerHTML=`  
+  
+ <div class="screen">  
+  
+  <div class="header">  
+  
+   <div>  
+    <div class="title">  
+     ⚡ NEXUS UPGRADE  
+    </div>  
+  
+    <div class="sub">  
+     قدرت ماین خودت را افزایش بده  
+    </div>  
+   </div>  
+  
+   <button  
+    class="logoMini"  
+    onclick="home()"  
+   >  
+    ×  
+   </button>  
+  
+  </div>  
+  
+  <div class="card">  
+  
+   <b>  
+    ⚡ CLICK MINER  
+   </b>  
+  
+   <div class="sub">  
+    ${fmt(S.clickPower)} LIBER / CLICK  
+   </div>  
+  
+   <div class="progress" style="margin-top:12px">  
+    <i style="width:${S.clickLevel}%"></i>  
+   </div>  
+  
+   <div class="mission">  
+  
+    <b>  
+     LEVEL ${S.clickLevel}/100  
+    </b>  
+  
+    <span style="  
+     float:left;  
+     color:var(--gold)  
+    ">  
+     ${clickCost()} LIBER  
+    </span>  
+  
+   </div>  
+  
+   <button  
+    class="btn gold"  
+    style="margin-top:9px"  
+    onclick="upgradeClick()"  
+   >  
+    ⚡ ارتقای کلیک ماینر  
+   </button>  
+  
+  </div>  
+  
+  <div class="card">  
+  
+   <b>  
+    🤖 AUTO MINER  
+   </b>  
+  
+   <div class="sub">  
+    ${  
+     S.auto  
+     ? "فعال • "+fmt(S.autoReward)+" LIBER / 12H"  
+     : "غیرفعال"  
+    }  
+   </div>  
+  
+   ${  
+    !S.auto  
+    ?`  
+     <button  
+      class="btn green"  
+      style="margin-top:12px"  
+      onclick="activateAuto()"  
+     >  
+      🤖 فعال‌سازی • 25 LIBER  
+     </button>  
+    `  
+    :`  
+     <div class="progress" style="margin-top:12px">  
+      <i style="width:${S.autoLevel}%"></i>  
+     </div>  
+  
+     <div class="mission">  
+      LEVEL ${S.autoLevel}/100  
+      <span style="float:left;color:var(--gold)">  
+       ${fmt(S.autoReward)} / 12H  
+      </span>  
+     </div>  
+  
+     <button  
+      class="btn"  
+      style="margin-top:9px"  
+      onclick="upgradeAuto()"  
+     >  
+      ⚡ ارتقا • ${autoCost()} LIBER  
+     </button>  
+  
+     <button  
+      class="btn gold"  
+      style="margin-top:8px"  
+      onclick="claimAuto()"  
+     >  
+      🎁 دریافت پاداش  
+     </button>  
+    `  
+   }  
+  
+  </div>  
+  
+ </div>  
+  
+ ${nav("upgrade")}  
+ `  
+}  
+  
+/* =========================================================  
+   MISSIONS  
+========================================================= */  
+  
+function missions(){  
+  
+ dailyReset();  
+ weeklyReset();  
+  
+ const weeklyDone=  
+  S.weekly.done.filter(Boolean).length;  
+  
+ document.getElementById("app").innerHTML=`  
+  
+ <div class="screen">  
+  
+  <div class="header">  
+  
+   <div>  
+    <div class="title">  
+     🎯 NEXUS MISSIONS  
+    </div>  
+  
+    <div class="sub">  
+     مأموریت‌های روزانه و هفتگی  
+    </div>  
+   </div>  
+  
+   <button  
+    class="logoMini"  
+    onclick="home()"  
+   >  
+    ×  
+   </button>  
+  
+  </div>  
+  
+  <div class="card">  
+  
+   <b>  
+    ⚡ مأموریت‌های امروز  
+   </b>  
+  
+   ${missionRow(  
+    "⛏️",  
+    "یک بار ماین کن",  
+    S.missions.click  
+   )}  
+  
+   ${missionRow(  
+    "⚡",  
+    "یک ارتقا انجام بده",  
+    S.missions.upgrade  
+   )}  
+  
+   ${missionRow(  
+    "🔥",  
+    "ورود روزانه",  
+    S.missions.login  
+   )}  
+  
+  </div>  
+  
+  <div class="card">  
+  
+   <b>  
+    🏆 مأموریت هفتگی  
+   </b>  
+  
+   <div class="sub">  
+    5 مأموریت • مجموع پاداش 30 LIBER  
+   </div>  
+  
+   ${[  
+    "100 بار ماین",  
+    "250 بار ماین",  
+    "یک ارتقا",  
+    "بازدید از پروفایل",  
+    "بازدید از خدمات"  
+   ].map((x,i)=>`  
+  
+    <div class="mission ${  
+     S.weekly.done[i]?"done":""  
+    }">  
+  
+     <div style="  
+      display:flex;  
+      justify-content:space-between  
+     ">  
+  
+      <b>  
+       ${i+1}. ${x}  
+      </b>  
+  
+      <b>  
+       ${  
+        S.weekly.done[i]  
+        ?"✓"  
+        :"+"+(i===0?5:6)+" LIBER"  
+       }  
+      </b>  
+  
+     </div>  
+  
+    </div>  
+  
+   `).join("")}  
+  
+  </div>  
+  
+  <div class="card center">  
+  
+   <div style="font-size:65px">  
+    🎁  
+   </div>  
+  
+   <h3>  
+    صندوق مأموریت  
+   </h3>  
+  
+   <div class="sub">  
+    با کامل کردن مأموریت‌ها پاداش بگیر  
+   </div>  
+  
+   <button  
+    class="btn gold"  
+    style="margin-top:11px"  
+    onclick="chest()"  
+   >  
+    🎁 بررسی صندوق  
+   </button>  
+  
+  </div>  
+  
+ </div>  
+  
+ ${nav("missions")}  
+ `  
+}  
+  
+function missionRow(icon,text,done){  
+  
+ return `  
+ <div class="mission ${done?"done":""}">  
+  
+  <div style="  
+   display:flex;  
+   justify-content:space-between  
+  ">  
+  
+   <b>  
+    ${icon} ${text}  
+   </b>  
+  
+   <b>  
+    ${done?"✓":"○"}  
+   </b>  
+  
+  </div>  
+  
+ </div>  
+ `  
+}  
+  
+function chest(){  
+  
+ if(  
+  Object.values(S.missions)  
+  .filter(Boolean).length<3  
+ )  
+  return toast("🎯 اول مأموریت‌های روزانه را کامل کن");  
+  
+ if(S.chestDate===today())  
+  return toast("🎁 صندوق امروز قبلاً گرفته شده");  
+  
+ const reward=.01+Math.random()*1.49;  
+  
+ S.liber+=reward;  
+ S.totalMined+=reward;  
+ S.chestDate=today();  
+  
+ save();  
+  
+ document.getElementById("app").innerHTML=`  
+  
+ <div class="screen center" style="padding-top:16vh">  
+  
+  <div class="card">  
+  
+   <div style="font-size:90px">  
+    🎁  
+   </div>  
+  
+   <h2>  
+    صندوق NEXUS باز شد!  
+   </h2>  
+  
+   <div style="  
+    font-size:36px;  
+    color:var(--gold);  
+    font-weight:1000;  
+    margin:15px  
+   ">  
+    +${fmt(reward)} LIBER  
+   </div>  
+  
+   <button  
+    class="btn"  
+    onclick="home()"  
+   >  
+    🚀 ادامه  
+   </button>  
+  
+  </div>  
+  
+ </div>  
+ `  
+}  
+  
+/* =========================================================  
+   PREMIUM  
+========================================================= */  
+  
+function premium(){  
+  
+ const active=premiumActive();  
+  
+ document.getElementById("app").innerHTML=`  
+  
+ <div class="screen">  
+  
+  <div class="header">  
+  
+   <div>  
+    <div class="title">  
+     👑 PREMIUM NEXUS  
+    </div>  
+  
+    <div class="sub">  
+     استودیو شخصی‌سازی پیشرفته  
+    </div>  
+   </div>  
+  
+   <button  
+    class="logoMini"  
+    onclick="home()"  
+   >  
+    ×  
+   </button>  
+  
+  </div>  
+  
+  ${  
+   active  
+   ?`  
+    <div class="card premium center">  
+  
+     <div class="premiumIcon">  
+      👑  
+     </div>  
+  
+     <h2>  
+      PREMIUM فعال است  
+     </h2>  
+  
+     <div class="sub">  
+      تا ${new Date(S.premiumUntil).toLocaleDateString("fa-IR")}  
+     </div>  
+  
+     <button  
+      class="btn gold"  
+      style="margin-top:14px"  
+      onclick="profileStudio()"  
+     >  
+      ✨ ورود به Profile Studio  
+     </button>  
+  
+    </div>  
+   `  
+   :`  
+    <div class="card premium center">  
+  
+     <div class="premiumIcon">  
+      👑  
+     </div>  
+  
+     <h2>  
+      فعال‌سازی Premium  
+     </h2>  
+  
+     <div class="sub">  
+      امکانات سه‌بعدی و شخصی‌سازی  
+     </div>  
+  
+    </div>  
+  
+    ${premiumPlan("1 ماه","300")}  
+    ${premiumPlan("3 ماه","600")}  
+    ${premiumPlan("6 ماه","800")}  
+    ${premiumPlan("1 سال","1200")}  
+   `  
+  }  
+  
+ </div>  
+  
+ ${nav("profile")}  
+ `  
+}  
+  
+function premiumPlan(title,price){  
+  
+ return `  
+ <div class="card">  
+  
+  <div style="  
+   display:flex;  
+   justify-content:space-between;  
+   align-items:center  
+  ">  
+  
+   <div>  
+    <b>  
+     👑 ${title}  
+    </b>  
+  
+    <div class="sub">  
+     Profile Studio + Premium  
+    </div>  
+   </div>  
+  
+   <b style="  
+    color:var(--gold);  
+    font-size:16px  
+   ">  
+    ${price}  
+    <small>LIBER</small>  
+   </b>  
+  
+  </div>  
+  
+  <button  
+   class="btn gold"  
+   style="margin-top:11px"  
+   onclick="buyPremium(${price},'${title}')"  
+  >  
+   ✨ فعال‌سازی  
+  </button>  
+  
+ </div>  
+ `  
+}  
+  
+function buyPremium(price,title){  
+  
+ if(S.liber<price)  
+  return toast("💰 موجودی کافی نیست");  
+  
+ S.liber-=price;  
+  
+ const months=  
+  title.includes("1 سال")?12:  
+  title.includes("6 ماه")?6:  
+  title.includes("3 ماه")?3:1;  
+  
+ S.premium=true;  
+  
+ const current=  
+  S.premiumUntil>Date.now()  
+  ?S.premiumUntil  
+  :Date.now();  
+  
+ S.premiumUntil=  
+  current+  
+  months*30*24*60*60*1000;  
+  
+ save();  
+  
+ toast("👑 Premium فعال شد");  
+  
+ premium()  
+}  
+  
+/* =========================================================  
+   PROFILE  
+========================================================= */  
+  
+function profile(){  
+  
+ document.getElementById("app").innerHTML=`  
+  
+ <div class="screen">  
+  
+  <div class="header">  
+  
+   <div>  
+    <div class="title">  
+     👤 PROFILE  
+    </div>  
+  
+    <div class="sub">  
+     هویت دیجیتال NEXUS  
+    </div>  
+   </div>  
+  
+   <button  
+    class="logoMini"  
+    onclick="home()"  
+   >  
+    ×  
+   </button>  
+  
+  </div>  
+  
+  <div class="card center">  
+  
+   <div class="profileFrame">  
+  
+    ${  
+     S.avatar  
+     ?`  
+      <img  
+       src="${esc(S.avatar)}"  
+       class="profileAvatar"  
+      >  
+     `  
+     :`  
+      <div  
+       class="profileAvatar"  
+       style="  
+        display:grid;  
+        place-items:center;  
+        background:#06172b;  
+        font-size:47px  
+       "  
+      >  
+       ${esc(S.emoji)}  
+      </div>  
+     `  
+    }  
+  
+   </div>  
+  
+   <div class="profileName">  
+  
+    ${esc(S.name)}  
+  
+    <span class="profileEmoji">  
+     ${esc(S.emoji)}  
+    </span>  
+  
+   </div>  
+  
+   <div class="sub">  
+    @${esc(S.username)}  
+   </div>  
+  
+   <div style="  
+    display:inline-block;  
+    margin-top:9px;  
+    padding:6px 11px;  
+    border-radius:20px;  
+    background:linear-gradient(  
+     135deg,#ffe66a,#ff9700  
+    );  
+    color:#211600;  
+    font-size:8px;  
+    font-weight:1000  
+   ">  
+    🏆 ${esc(RANKS[updateRank()])}  
+   </div>  
+  
+  </div>  
+  
+  <div class="stats">  
+  
+   <div class="stat">  
+    <b>${fmt(S.liber)}</b>  
+    <span>💎 LIBER</span>  
+   </div>  
+  
+   <div class="stat">  
+    <b>${S.clicks}</b>  
+    <span>⛏️ ماین</span>  
+   </div>  
+  
+   <div class="stat">  
+    <b>${premiumActive()?"ON":"OFF"}</b>  
+    <span>👑 Premium</span>  
+   </div>  
+  
+  </div>  
+  
+  <div class="card premium">  
+  
+   <div style="font-size:32px">  
+    👑  
+   </div>  
+  
+   <b>  
+    Premium Profile Studio  
+   </b>  
+  
+   <div class="sub">  
+    ایموجی، قاب، رنگ، پس‌زمینه و استایل  
+   </div>  
+  
+   <button  
+    class="btn gold"  
+    style="margin-top:11px"  
+    onclick="profileStudio()"  
+   >  
+    ✨ شخصی‌سازی پروفایل  
+   </button>  
+  
+  </div>  
+  
+  <div class="card">  
+  
+   <b>  
+    🖼️ تصویر پروفایل  
+   </b>  
+  
+   <div class="sub" style="margin:7px 0">  
+    تصویر را از دستگاه انتخاب کن  
+   </div>  
+  
+   <input  
+    type="file"  
+    accept="image/*"  
+    onchange="changeAvatar(event)"  
+   >  
+  
+  </div>  
+  
+ </div>  
+  
+ ${nav("profile")}  
+ `  
+}  
+  
+function changeAvatar(event){  
+  
+ if(!premiumActive())  
+  return toast("👑 برای این قابلیت Premium لازم است");  
+  
+ const file=event.target.files[0];  
+  
+ if(!file)  
+  return;  
+  
+ if(!file.type.startsWith("image/"))  
+  return toast("❌ فایل تصویر نیست");  
+  
+ if(file.size>3*1024*1024)  
+  return toast("❌ حداکثر 3MB");  
+  
+ const reader=new FileReader();  
+  
+ reader.onload=()=>{  
+  
+  S.avatar=reader.result;  
+  
+  save();  
+  
+  profile()  
+ };  
+  
+ reader.readAsDataURL(file)  
+}  
+  
+/* =========================================================  
+   PROFILE STUDIO  
+========================================================= */  
+  
+function profileStudio(){  
+  
+ if(!premiumActive())  
+  return premiumLocked();  
+  
+ document.getElementById("app").innerHTML=`  
+  
+ <div class="screen">  
+  
+  <div class="header">  
+  
+   <div>  
+    <div class="title">  
+     🎨 PROFILE STUDIO  
+    </div>  
+  
+    <div class="sub">  
+     استودیوی سه‌بعدی شخصی‌سازی  
+    </div>  
+   </div>  
+  
+   <button  
+    class="logoMini"  
+    onclick="profile()"  
+   >  
+    ×  
+   </button>  
+  
+  </div>  
+  
+  <div class="card center">  
+  
+   <div class="profileFrame">  
+  
+    ${  
+     S.avatar  
+     ?`  
+      <img  
+       src="${esc(S.avatar)}"  
+       class="profileAvatar"  
+      >  
+     `  
+     :`  
+      <div  
+       class="profileAvatar"  
+       style="  
+        display:grid;  
+        place-items:center;  
+        background:#06172b;  
+        font-size:47px  
+       "  
+      >  
+       ${esc(S.emoji)}  
+      </div>  
+     `  
+    }  
+  
+   </div>  
+  
+   <div  
+    class="profileName"  
+    id="previewName"  
+   >  
+    ${esc(S.name)}  
+    <span class="profileEmoji">  
+     ${esc(S.emoji)}  
+    </span>  
+   </div>  
+  
+   <div class="sub">  
+    LIVE PREVIEW  
+   </div>  
+  
+  </div>  
+  
+  <div class="card">  
+  
+   <b>  
+    ✨ ایموجی شخصی  
+   </b>  
+  
+   <div class="sub">  
+    هر ایموجی دلخواه وارد کن  
+   </div>  
+  
+   <input  
+    id="emojiInput"  
+    maxlength="4"  
+    value="${esc(S.emoji)}"  
+    placeholder="⚡"  
+    style="  
+     font-size:30px;  
+     text-align:center  
+    "  
+   >  
+  
+   <button  
+    class="btn gold"  
+    style="margin-top:9px"  
+    onclick="saveEmoji()"  
+   >  
+    ✨ قرار دادن کنار اسم  
+   </button>  
+  
+  </div>  
+  
+  <div class="card">  
+  
+   <b>  
+    🌈 رنگ اسم  
+   </b>  
+  
+   <div class="switch">  
+  
+    <b>  
+     RGB  
+    </b>  
+  
+    <div  
+     class="toggle ${  
+      S.nameColor==="rgb"?"on":""  
+     }"  
+     onclick="toggleNameColor()"  
+    >  
+     <i></i>  
+    </div>  
+  
+   </div>  
+  
+   <div class="sub">  
+    در حالت RGB رنگ اسم به صورت خودکار تغییر می‌کند  
+   </div>  
+  
+   <b style="  
+    display:block;  
+    margin-top:13px  
+   ">  
+    🎨 رنگ ثابت  
+   </b>  
+  
+   <div class="colorRow">  
+  
+    <button class="color c1"  
+     onclick="setNameColor('#00eaff')">  
+    </button>  
+  
+    <button class="color c2"  
+     onclick="setNameColor('#0877ff')">  
+    </button>  
+  
+    <button class="color c3"  
+     onclick="setNameColor('#ffd83d')">  
+    </button>  
+  
+    <button class="color c4"  
+     onclick="setNameColor('#ff416c')">  
+    </button>  
+  
+    <button class="color c5"  
+     onclick="setNameColor('#2dffae')">  
+    </button>  
+  
+    <button class="color c6"  
+     onclick="setNameColor('#ffffff')">  
+    </button>  
+  
+   </div>  
+  
+  </div>  
+  
+  <div class="card">  
+  
+   <b>  
+    🖼️ قاب سه‌بعدی  
+   </b>  
+  
+   <div class="sub">  
+    قاب متحرک اطراف تصویر پروفایل  
+   </div>  
+  
+   <button  
+    class="btn"  
+    style="margin-top:10px"  
+    onclick="toggleFrame()"  
+   >  
+    ${  
+     S.frame  
+     ?"💎 قاب فعال است"  
+     :"✨ فعال کردن قاب"  
+    }  
+   </button>  
+  
+  </div>  
+  
+ </div>  
+  
+ ${nav("profile")}  
+ `  
+}  
+  
+function premiumLocked(){  
+  
+ document.getElementById("app").innerHTML=`  
+  
+ <div class="screen center" style="padding-top:17vh">  
+  
+  <div class="card premium">  
+  
+   <div class="premiumIcon">  
+    🔒  
+   </div>  
+  
+   <h2>  
+    Profile Studio قفل است  
+   </h2>  
+  
+   <div class="sub">  
+    لطفاً ابتدا اشتراک Premium را فعال کنید  
+   </div>  
+  
+   <button  
+    class="btn gold"  
+    style="margin-top:13px"  
+    onclick="premium()"  
+   >  
+    👑 فعال‌سازی Premium  
+   </button>  
+  
+  </div>  
+  
+ </div>  
+ `  
+}  
+  
+function saveEmoji(){  
+  
+ const value=  
+  document.getElementById("emojiInput")  
+  .value.trim();  
+  
+ if(!value)  
+  return toast("ایموجی وارد کن");  
+  
+ S.emoji=value;  
+  
+ save();  
+  
+ toast("✨ ایموجی شخصی شد");  
+  
+ profileStudio()  
+}  
+  
+function toggleNameColor(){  
+  
+ S.nameColor=  
+  S.nameColor==="rgb"  
+  ?"fixed"  
+  :"rgb";  
+  
+ save();  
+  
+ profileStudio()  
+}  
+  
+function setNameColor(color){  
+  
+ S.nameColor=color;  
+  
+ save();  
+  
+ toast("🎨 رنگ اسم تغییر کرد");  
+  
+ profileStudio()  
+}  
+  
+function toggleFrame(){  
+  
+ S.frame=!S.frame;  
+  
+ save();  
+  
+ toast(  
+  S.frame  
+  ?"💎 قاب فعال شد"  
+  :"قاب خاموش شد"  
+ );  
+  
+ profileStudio()  
+}  
+  
+/* =========================================================  
+   SERVICES  
+========================================================= */  
+  
+function services(){  
+  
+ document.getElementById("app").innerHTML=`  
+  
+ <div class="screen">  
+  
+  <div class="header">  
+  
+   <div>  
+    <div class="title">  
+     🚀 NEXUS SERVICES  
+    </div>  
+  
+    <div class="sub">  
+     خدمات و پیگیری سفارش  
+    </div>  
+   </div>  
+  
+   <button  
+    class="logoMini"  
+    onclick="home()"  
+   >  
+    ×  
+   </button>  
+  
+  </div>  
+  
+  <div class="card">  
+  
+   <div class="serviceGrid">  
+  
+    <button  
+     class="service"  
+     onclick="serviceBoost()"  
+    >  
+     <div class="serviceIcon">  
+      🚀  
+     </div>  
+     <b>  
+      Boost  
+     </b>  
+     <small>  
+      انتخاب مدت و ثبت سفارش  
+     </small>  
+    </button>  
+  
+    <button  
+     class="service"  
+     onclick="serviceStars()"  
+    >  
+     <div class="serviceIcon">  
+      ⭐  
+     </div>  
+     <b>  
+      Stars  
+     </b>  
+     <small>  
+      خدمات Stars  
+     </small>  
+    </button>  
+  
+    <button  
+     class="service"  
+     onclick="serviceMembers()"  
+    >  
+     <div class="serviceIcon">  
+      👥  
+     </div>  
+     <b>  
+      Member  
+     </b>  
+     <small>  
+      سفارش ممبر  
+     </small>  
+    </button>  
+  
+    <button  
+     class="service"  
+     onclick="serviceViews()"  
+    >  
+     <div class="serviceIcon">  
+      👁️  
+     </div>  
+     <b>  
+      View  
+     </b>  
+     <small>  
+      سفارش ویو  
+     </small>  
+    </button>  
+  
+    <button  
+     class="service"  
+     onclick="serviceReactions()"  
+    >  
+     <div class="serviceIcon">  
+      ❤️  
+     </div>  
+     <b>  
+      Reaction  
+     </b>  
+     <small>  
+      واکنش پست  
+     </small>  
+    </button>  
+  
+    <button  
+     class="service"  
+     onclick="tracking()"  
+    >  
+     <div class="serviceIcon">  
+      📦  
+     </div>  
+     <b>  
+      پیگیری سفارش  
+     </b>  
+     <small>  
+      مشاهده وضعیت سفارش‌ها  
+     </small>  
+    </button>  
+  
+   </div>  
+  
+  </div>  
+  
+ </div>  
+  
+ ${nav("services")}  
+ `  
+}  
+  
+/* =========================================================  
+   SERVICE FORMS  
+========================================================= */  
+  
+function serviceBoost(){  
+  
+ serviceForm(  
+  "🚀",  
+  "Boost",  
+  [  
+   ["1 تا 5 روز","350"],  
+   ["1 تا 10 روز","450"]  
+  ],  
+  "لینک موردنظر را وارد کنید",  
+  "لینک پست یا کانال"  
+ )  
+}  
+  
+function serviceStars(){  
+  
+ serviceForm(  
+  "⭐",  
+  "Stars",  
+  [  
+   ["تک پست","300"]  
+  ],  
+  "لینک پست را وارد کنید",  
+  "لینک پست"  
+ )  
+}  
+  
+function serviceMembers(){  
+  
+ serviceForm(  
+  "👥",  
+  "Member",  
+  [  
+   ["50 ممبر","150"],  
+   ["100 ممبر","250"]  
+  ],  
+  "لینک کانال را وارد کنید",  
+  "لینک کانال"  
+ )  
+}  
+  
+function serviceViews(){  
+  
+ serviceForm(  
+  "👁️",  
+  "View",  
+  [  
+   ["50 View","100"],  
+   ["100 View","150"]  
+  ],  
+  "لینک پست را وارد کنید",  
+  "لینک پست"  
+ )  
+}  
+  
+function serviceReactions(){  
+  
+ serviceForm(  
+  "❤️",  
+  "Reaction",  
+  [  
+   ["15 Reaction","150"],  
+   ["50 Reaction","250"],  
+   ["تکی","250"],  
+   ["چندتایی","300"]  
+  ],  
+  "لینک پست را وارد کنید",  
+  "لینک پست"  
+ )  
+}  
+  
+function serviceForm(  
+ icon,  
+ type,  
+ plans,  
+ label,  
+ placeholder  
+){  
+  
+ document.getElementById("app").innerHTML=`  
+  
+ <div class="screen">  
+  
+  <div class="header">  
+  
+   <div>  
+    <div class="title">  
+     ${icon} ${type}  
+    </div>  
+  
+    <div class="sub">  
+     انتخاب سرویس  
+    </div>  
+   </div>  
+  
+   <button  
+    class="logoMini"  
+    onclick="services()"  
+   >  
+    ×  
+   </button>  
+  
+  </div>  
+  
+  <div class="card">  
+  
+   <b>  
+    انتخاب نوع سفارش  
+   </b>  
+  
+   <div id="servicePlans">  
+  
+    ${plans.map((p,i)=>`  
+  
+     <button  
+      class="mission"  
+      style="  
+       width:100%;  
+       color:white;  
+       text-align:right  
+      "  
+      onclick="selectPlan(this,'${p[0]}',${p[1]})"  
+     >  
+  
+      <b>  
+       ${icon} ${p[0]}  
+      </b>  
+  
+      <span style="  
+       float:left;  
+       color:var(--gold)  
+      ">  
+       ${p[1]} LIBER  
+      </span>  
+  
+     </button>  
+  
+    `).join("")}  
+  
+   </div>  
+  
+   <input  
+    id="serviceLink"  
+    placeholder="${placeholder}"  
+    style="margin-top:13px"  
+   >  
+  
+   <label>  
+    توضیحات سفارش  
+   </label>  
+  
+   <input  
+    id="serviceDescription"  
+    placeholder="${label}"  
+   >  
+  
+   <div id="selectedPlan"  
+    class="mission"  
+    style="display:none">  
+   </div>  
+  
+   <button  
+    class="btn gold"  
+    style="margin-top:12px"  
+    onclick="confirmService('${type}','${icon}')"  
+   >  
+    🚀 ادامه سفارش  
+   </button>  
+  
+  </div>  
+  
+ </div>  
+  
+ ${nav("services")}  
+ `  
+}  
+  
+function selectPlan(el,name,price){  
+  
+ document.querySelectorAll(  
+  "#servicePlans .mission"  
+ ).forEach(x=>{  
+  x.style.borderColor=  
+   "rgba(0,234,255,.1)"  
+ });  
+  
+ el.style.borderColor="#ffd83d";  
+  
+ window.selectedService={  
+  name,  
+  price  
+ };  
+  
+ const box=document.getElementById("selectedPlan");  
+  
+ box.style.display="block";  
+  
+ box.innerHTML=`  
+  <b>  
+   انتخاب شد: ${esc(name)}  
+  </b>  
+  
+  <span style="  
+   float:left;  
+   color:var(--gold)  
+  ">  
+   ${price} LIBER  
+  </span>  
+ `  
+}  
+  
+function confirmService(type,icon){  
+  
+ if(!window.selectedService)  
+  return toast("اول نوع سرویس را انتخاب کن");  
+  
+ const link=  
+  document.getElementById("serviceLink")  
+  .value.trim();  
+  
+ const description=  
+  document.getElementById("serviceDescription")  
+  .value.trim();  
+  
+ if(!link)  
+  return toast("لینک سفارش را وارد کن");  
+  
+ if(!description)  
+  return toast("توضیحات را وارد کن");  
+  
+ const price=  
+  window.selectedService.price;  
+  
+ if(S.liber<price)  
+  return toast("💰 موجودی LIBER کافی نیست");  
+  
+ const code=  
+  "NX-"+Date.now().toString(36).toUpperCase();  
+  
+ const order={  
+  id:code,  
+  type,  
+  icon,  
+  plan:window.selectedService.name,  
+  price,  
+  link,  
+  description,  
+  numericId:S.numericId,  
+  username:S.username,  
+  name:S.name,  
+  createdAt:Date.now(),  
+  status:"در انتظار بررسی"  
+ };  
+  
+ S.liber-=price;  
+  
+ S.orders.unshift(order);  
+  
+ save();  
+  
+ window.selectedService=null;  
+  
+ orderSuccess(order)  
+}  
+  
+function orderSuccess(order){  
+  
+ document.getElementById("app").innerHTML=`  
+  
+ <div class="screen center" style="padding-top:8vh">  
+  
+  <div class="card">  
+  
+   <div style="  
+    width:80px;  
+    height:80px;  
+    margin:auto;  
+    border-radius:50%;  
+    display:grid;  
+    place-items:center;  
+    font-size:43px;  
+    background:linear-gradient(  
+     145deg,#2dffae,#00eaff  
+    );  
+    color:#03170f;  
+    box-shadow:0 0 35px rgba(45,255,174,.35)  
+   ">  
+    ✓  
+   </div>  
+  
+   <h2 style="margin-top:14px">  
+    سفارش ثبت شد  
+   </h2>  
+  
+   <div class="order pending"  
+    style="text-align:right">  
+  
+    🆔 کد پیگیری:  
+    <b style="color:var(--blue)">  
+     ${esc(order.id)}  
+    </b>  
+    <br>  
+  
+    ${order.icon}  
+    سرویس:  
+    <b>${esc(order.type)}</b>  
+    <br>  
+  
+    📦 پلن:  
+    <b>${esc(order.plan)}</b>  
+    <br>  
+  
+    💎 مبلغ:  
+    <b style="color:var(--gold)">  
+     ${order.price} LIBER  
+    </b>  
+    <br>  
+  
+    🔗 لینک:  
+    <b>${esc(order.link)}</b>  
+    <br>  
+  
+    📝 توضیحات:  
+    ${esc(order.description)}  
+  
+   </div>  
+  
+   <div class="card center"  
+    style="margin-top:10px">  
+  
+    <div style="font-size:48px">  
+     ⏳  
+    </div>  
+  
+    <b>  
+     سفارش در صف بررسی قرار گرفت  
+    </b>  
+  
+    <div class="sub"  
+     style="line-height:2;margin-top:5px">  
+     پس از بررسی، وضعیت سفارش در بخش  
+     «پیگیری سفارش» نمایش داده می‌شود.  
+    </div>  
+  
+   </div>  
+  
+   <button  
+    class="btn"  
+    onclick="tracking()"  
+   >  
+    📦 پیگیری سفارش  
+   </button>  
+  
+  </div>  
+  
+ </div>  
+ `  
+}  
+  
+/* =========================================================  
+   TRACKING  
+========================================================= */  
+  
+function tracking(){  
+  
+ document.getElementById("app").innerHTML=`  
+  
+ <div class="screen">  
+  
+  <div class="header">  
+  
+   <div>  
+    <div class="title">  
+     📦 پیگیری سفارش  
+    </div>  
+  
+    <div class="sub">  
+     تاریخچه سفارش‌های شما  
+    </div>  
+   </div>  
+  
+   <button  
+    class="logoMini"  
+    onclick="services()"  
+   >  
+    ×  
+   </button>  
+  
+  </div>  
+  
+  <div class="card">  
+  
+   ${  
+    S.orders.length  
+    ?  
+    S.orders.map(order=>`  
+  
+     <div class="order ${  
+      order.status==="تکمیل شد"  
+      ?"done"  
+      :"pending"  
+     }">  
+  
+      <div style="  
+       display:flex;  
+       justify-content:space-between  
+      ">  
+  
+       <b>  
+        ${order.icon} ${esc(order.type)}  
+       </b>  
+  
+       <b>  
+        ${esc(order.status)}  
+       </b>  
+  
+      </div>  
+  
+      <div class="sub">  
+       ${esc(order.plan)}  
+      </div>  
+  
+      <div style="  
+       margin-top:8px;  
+       line-height:2;  
+       font-size:9px  
+      ">  
+  
+       🆔  
+       ${esc(order.id)}  
+       <br>  
+  
+       💎  
+       ${order.price} LIBER  
+       <br>  
+  
+       🔗  
+       ${esc(order.link)}  
+       <br>  
+  
+       📝  
+       ${esc(order.description)}  
+       <br>  
+  
+       🕒  
+       ${new Date(order.createdAt)  
+        .toLocaleString("fa-IR")}  
+  
+      </div>  
+  
+     </div>  
+  
+    `).join("")  
+    :  
+    `  
+     <div class="center"  
+      style="padding:35px 10px">  
+  
+      <div style="font-size:60px">  
+       📦  
+      </div>  
+  
+      <b>  
+       هنوز سفارشی ثبت نشده  
+      </b>  
+  
+     </div>  
+    `  
+   }  
+  
+  </div>  
+  
+ </div>  
+  
+ ${nav("services")}  
+ `  
+}  
+  
+/* =========================================================  
+   SETTINGS  
+========================================================= */  
+  
+function settings(){  
+  
+ document.getElementById("app").innerHTML=`  
+  
+ <div class="screen">  
+  
+  <div class="header">  
+  
+   <div>  
+    <div class="title">  
+     ⚙️ NEXUS SETTINGS  
+    </div>  
+  
+    <div class="sub">  
+     تنظیمات برنامه  
+    </div>  
+   </div>  
+  
+   <button  
+    class="logoMini"  
+    onclick="home()"  
+   >  
+    ×  
+   </button>  
+  
+  </div>  
+  
+  <div class="card">  
+  
+   <b>  
+    🎨 تم  
+   </b>  
+  
+   <div class="sub">  
+    طراحی فعلی: BLUE GOLD CINEMATIC  
+   </div>  
+  
+   <div class="colorRow">  
+  
+    <button class="color c1"  
+     onclick="theme('#00eaff')">  
+    </button>  
+  
+    <button class="color c2"  
+     onclick="theme('#0877ff')">  
+    </button>  
+  
+    <button class="color c3"  
+     onclick="theme('#ffd83d')">  
+    </button>  
+  
+    <button class="color c4"  
+     onclick="theme('#ff416c')">  
+    </button>  
+  
+    <button class="color c5"  
+     onclick="theme('#2dffae')">  
+    </button>  
+  
+    <button class="color c6"  
+     onclick="theme('#ffffff')">  
+    </button>  
+  
+   </div>  
+  
+  </div>  
+  
+  <div class="card">  
+  
+   <b>  
+    🔐 ذخیره‌سازی  
+   </b>  
+  
+   <div class="mission">  
+    تمام اطلاعات این نسخه در LocalStorage  
+    مرورگر ذخیره می‌شود.  
+   </div>  
+  
+  </div>  
+  
+  <div class="card">  
+  
+   <b>  
+    🧹 حساب  
+   </b>  
+  
+   <button  
+    class="btn red"  
+    style="margin-top:10px"  
+    onclick="resetApp()"  
+   >  
+    🗑️ حذف اطلاعات محلی  
+   </button>  
+  
+  </div>  
+  
+ </div>  
+  
+ ${nav("profile")}  
+ `  
+}  
+  
+function theme(color){  
+  
+ document.documentElement.style.setProperty(  
+  "--blue",  
+  color  
+ );  
+  
+ toast("🎨 تم تغییر کرد")  
+}  
+  
+function resetApp(){  
+  
+ if(confirm("همه اطلاعات این نسخه پاک شود؟")){  
+  
+  localStorage.removeItem(DB_KEY);  
+  
+  location.reload()  
+ }  
+}  
+  
+/* =========================================================  
+   NAV  
+========================================================= */  
+  
+function nav(active){  
+  
+ return `  
+  
+ <div class="nav">  
+  
+  <button  
+   class="${active==="home"?"active":""}"  
+   onclick="home()"  
+  >  
+   <b>⌂</b>  
+   خانه  
+  </button>  
+  
+  <button  
+   class="${active==="upgrade"?"active":""}"  
+   onclick="upgrade()"  
+  >  
+   <b>⚡</b>  
+   ارتقا  
+  </button>  
+  
+  <button  
+   class="${active==="missions"?"active":""}"  
+   onclick="missions()"  
+  >  
+   <b>🎯</b>  
+   مأموریت  
+  </button>  
+  
+  <button  
+   class="${active==="services"?"active":""}"  
+   onclick="services()"  
+  >  
+   <b>🚀</b>  
+   خدمات  
+  </button>  
+  
+  <button  
+   class="${active==="profile"?"active":""}"  
+   onclick="profile()"  
+  >  
+   <b>👤</b>  
+   پروفایل  
+  </button>  
+  
+ </div>  
+ `  
+}  
+  
+/* =========================================================  
+   AUTO DAILY LOOP  
+========================================================= */  
+  
+setInterval(()=>{  
+  
+ if(!S.created)  
+  return;  
+  
+ dailyReset();  
+ weeklyReset();  
+  
+ if(  
+  S.premium &&  
+  Date.now()>=S.premiumUntil  
+ ){  
+  S.premium=false;  
+  save();  
+ }  
+  
+},60000);  
+  
+/* =========================================================  
+   START  
+========================================================= */  
+  
+intro();  
+  
+</script>  </body>  
+</html>
