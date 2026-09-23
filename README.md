@@ -1,2 +1,0 @@
-# StarsCoinBot
-Professional Telegram Bot
