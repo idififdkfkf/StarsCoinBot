@@ -1,3161 +1,705 @@
-# ============================================================
-# 🇮🇷 IRAN GOLF BOT BUILDER — TELEGRAM ULTRA
-# One File Edition
-# ============================================================
-#
-# Railway Environment Variables:
-#
-# MAIN_BOT_TOKEN=توکن_ربات_اصلی
-# OWNER_ID=آیدی_عددی_شما
-# REQUIRED_CHANNEL=@Iran_Golf1
-#
-# Optional:
-# DB_PATH=data/iran_golf.sqlite3
-# FREE_BROADCAST_LIMIT=150
-# PORT=8080
-#
-# Install:
-# pip install -r requirements.txt
-#
-# Run:
-# python main.py
-#
-# ============================================================
-
-import os
-import re
-import json
-import time
-import uuid
-import sqlite3
-import asyncio
 import logging
-import secrets
-from datetime import datetime, timezone
 
-from telegram import (
-    Update,
-    Bot,
-    BotCommand,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    ReplyKeyboardMarkup,
-    KeyboardButton,
-    WebAppInfo,
-    InputMediaPhoto,
-    InputMediaVideo,
-    InputMediaDocument,
-    LabeledPrice,
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatMemberStatus
-from telegram.error import (
-    TelegramError,
-    Forbidden,
-    BadRequest,
-)
 from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    PreCheckoutQueryHandler,
-    ContextTypes,
-    filters,
+    Application, CommandHandler, CallbackQueryHandler, MessageHandler,
+    ContextTypes, filters, ConversationHandler,
 )
 
-
-# ============================================================
-# CONFIG
-# ============================================================
-
-MAIN_BOT_TOKEN = os.getenv(
-    "MAIN_BOT_TOKEN",
-    ""
-).strip()
-
-OWNER_ID = int(
-    os.getenv(
-        "OWNER_ID",
-        "0"
-    ) or 0
+import database as db
+import keyboards as kb
+from captcha import build_captcha
+from config import (
+    FORCE_JOIN_CHANNEL, ADMIN_ID, ADMIN_SECRET_CODE, FREE_BOT_LIMIT,
+    PREMIUM_BOT_LIMIT, SUBSCRIPTION_STARS_PRICE, WEBAPP_BASE_URL,
 )
-
-REQUIRED_CHANNEL = os.getenv(
-    "REQUIRED_CHANNEL",
-    "@Iran_Golf1"
-).strip()
-
-DB_PATH = os.getenv(
-    "DB_PATH",
-    "data/iran_golf.sqlite3"
+from payments import (
+    send_subscription_invoice, precheckout_handler, successful_payment_handler,
+    list_available_gifts, send_gift,
 )
+import bot_manager
 
-FREE_BROADCAST_LIMIT = int(
-    os.getenv(
-        "FREE_BROADCAST_LIMIT",
-        "150"
-    ) or 150
-)
+log = logging.getLogger(__name__)
 
-PORT = int(
-    os.getenv(
-        "PORT",
-        "8080"
-    ) or 8080
-)
+# conversation states
+(WAITING_TOKEN, WAITING_BUTTON_TEXT, WAITING_BUTTON_COLOR, WAITING_BUTTON_REPLY,
+ WAITING_BROADCAST, WAITING_FORCEJOIN, WAITING_GIFT_TARGET, WAITING_PHOTO,
+ WAITING_UNLOCK_PRICE, WAITING_UNLOCK_TEXT) = range(10)
 
-os.makedirs(
-    os.path.dirname(DB_PATH) or ".",
-    exist_ok=True
-)
 
-logging.basicConfig(
-    format=(
-        "%(asctime)s | "
-        "%(levelname)s | "
-        "%(name)s | "
-        "%(message)s"
-    ),
-    level=logging.INFO,
-)
+def _bot_limit(owner_id: int) -> int:
+    base = PREMIUM_BOT_LIMIT if db.is_premium(owner_id) else FREE_BOT_LIMIT
+    return base + db.get_bonus_slots(owner_id)
 
-log = logging.getLogger(
-    "iran-golf-ultra"
-)
 
-
-# ============================================================
-# GLOBAL CHILD BOT STORAGE
-# ============================================================
-
-CHILD_APPS = {}
-
-CHILD_START_LOCK = asyncio.Lock()
-
-
-# ============================================================
-# DATABASE
-# ============================================================
-
-def db():
-    con = sqlite3.connect(
-        DB_PATH,
-        timeout=30
-    )
-
-    con.row_factory = sqlite3.Row
-
-    con.execute(
-        "PRAGMA journal_mode=WAL"
-    )
-
-    return con
-
-
-def now():
-    return datetime.now(
-        timezone.utc
-    ).isoformat()
-
-
-def init_db():
-
-    con = db()
-
-    con.executescript(
-        """
-
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT DEFAULT '',
-            first_name TEXT DEFAULT '',
-            last_name TEXT DEFAULT '',
-            created_at TEXT NOT NULL,
-            last_seen TEXT NOT NULL,
-            blocked INTEGER DEFAULT 0
-        );
-
-        CREATE TABLE IF NOT EXISTS bots (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            owner_id INTEGER NOT NULL,
-            token TEXT UNIQUE NOT NULL,
-            username TEXT DEFAULT '',
-            name TEXT DEFAULT '',
-            created_at TEXT NOT NULL,
-            active INTEGER DEFAULT 1
-        );
-
-        CREATE TABLE IF NOT EXISTS bot_settings (
-            bot_id INTEGER NOT NULL,
-            key TEXT NOT NULL,
-            value TEXT DEFAULT '',
-            PRIMARY KEY(bot_id,key)
-        );
-
-        CREATE TABLE IF NOT EXISTS buttons (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            bot_id INTEGER NOT NULL,
-            text TEXT NOT NULL,
-            action TEXT NOT NULL,
-            value TEXT DEFAULT '',
-            row INTEGER DEFAULT 0,
-            col INTEGER DEFAULT 0,
-            style TEXT DEFAULT 'reply',
-            active INTEGER DEFAULT 1
-        );
-
-        CREATE TABLE IF NOT EXISTS bot_users (
-            bot_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            username TEXT DEFAULT '',
-            first_name TEXT DEFAULT '',
-            joined_at TEXT NOT NULL,
-            PRIMARY KEY(bot_id,user_id)
-        );
-
-        CREATE TABLE IF NOT EXISTS variables (
-            bot_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            value TEXT DEFAULT '',
-            PRIMARY KEY(bot_id,name)
-        );
-
-        CREATE TABLE IF NOT EXISTS tickets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            bot_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            message TEXT NOT NULL,
-            answer TEXT DEFAULT '',
-            status TEXT DEFAULT 'open',
-            created_at TEXT NOT NULL,
-            answered_at TEXT DEFAULT ''
-        );
-
-        CREATE TABLE IF NOT EXISTS subscriptions (
-            bot_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            plan TEXT NOT NULL,
-            expires_at INTEGER NOT NULL,
-            PRIMARY KEY(bot_id,user_id)
-        );
-
-        CREATE TABLE IF NOT EXISTS logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            bot_id INTEGER,
-            user_id INTEGER,
-            event TEXT DEFAULT '',
-            data TEXT DEFAULT '',
-            created_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS broadcasts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            bot_id INTEGER NOT NULL,
-            text TEXT NOT NULL,
-            sent INTEGER DEFAULT 0,
-            failed INTEGER DEFAULT 0,
-            created_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS payments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            bot_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            payload TEXT DEFAULT '',
-            currency TEXT DEFAULT '',
-            amount INTEGER DEFAULT 0,
-            status TEXT DEFAULT 'pending',
-            created_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            bot_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            description TEXT DEFAULT '',
-            price INTEGER DEFAULT 0,
-            currency TEXT DEFAULT 'XTR',
-            payload TEXT DEFAULT '',
-            active INTEGER DEFAULT 1
-        );
-
-        CREATE TABLE IF NOT EXISTS admins (
-            bot_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            role TEXT DEFAULT 'admin',
-            created_at TEXT NOT NULL,
-            PRIMARY KEY(bot_id,user_id)
-        );
-
-        CREATE TABLE IF NOT EXISTS banned_users (
-            bot_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            reason TEXT DEFAULT '',
-            created_at TEXT NOT NULL,
-            PRIMARY KEY(bot_id,user_id)
-        );
-
-        CREATE TABLE IF NOT EXISTS forced_channels (
-            bot_id INTEGER NOT NULL,
-            channel TEXT NOT NULL,
-            PRIMARY KEY(bot_id,channel)
-        );
-
-        """
-    )
-
-    con.commit()
-    con.close()
-
-
-# ============================================================
-# USER DATABASE
-# ============================================================
-
-def add_user(user):
-
-    if not user:
-        return
-
-    con = db()
-
-    con.execute(
-        """
-        INSERT INTO users(
-            user_id,
-            username,
-            first_name,
-            last_name,
-            created_at,
-            last_seen
-        )
-        VALUES(?,?,?,?,?,?)
-
-        ON CONFLICT(user_id)
-        DO UPDATE SET
-            username=excluded.username,
-            first_name=excluded.first_name,
-            last_name=excluded.last_name,
-            last_seen=excluded.last_seen
-        """,
-        (
-            user.id,
-            user.username or "",
-            user.first_name or "",
-            user.last_name or "",
-            now(),
-            now(),
-        )
-    )
-
-    con.commit()
-    con.close()
-
-
-def get_user(user_id):
-
-    con = db()
-
-    row = con.execute(
-        "SELECT * FROM users WHERE user_id=?",
-        (user_id,)
-    ).fetchone()
-
-    con.close()
-
-    return row
-
-
-def total_users():
-
-    con = db()
-
-    value = con.execute(
-        "SELECT COUNT(*) AS n FROM users"
-    ).fetchone()["n"]
-
-    con.close()
-
-    return value
-
-
-# ============================================================
-# BOT DATABASE
-# ============================================================
-
-def create_bot(
-    owner_id,
-    token,
-    username,
-    name
-):
-
-    con = db()
-
-    cur = con.execute(
-        """
-        INSERT INTO bots(
-            owner_id,
-            token,
-            username,
-            name,
-            created_at
-        )
-        VALUES(?,?,?,?,?)
-        """,
-        (
-            owner_id,
-            token,
-            username or "",
-            name or "",
-            now()
-        )
-    )
-
-    bot_id = cur.lastrowid
-
-    defaults = {
-        "welcome":
-            "سلام 👋\n"
-            "به ربات خوش آمدی.",
-
-        "about":
-            "این ربات توسط "
-            "Iran Golf Bot Builder "
-            "ساخته شده است.",
-
-        "contact":
-            "برای ارتباط با مدیریت پیام ارسال کنید.",
-
-        "support":
-            "🎫 پیام خود را برای پشتیبانی ارسال کنید.",
-
-        "join_required":
-            "false",
-    }
-
-    for key, value in defaults.items():
-
-        con.execute(
-            """
-            INSERT OR REPLACE INTO
-            bot_settings(
-                bot_id,
-                key,
-                value
-            )
-            VALUES(?,?,?)
-            """,
-            (
-                bot_id,
-                key,
-                value
-            )
-        )
-
-    con.commit()
-    con.close()
-
-    return bot_id
-
-
-def get_bot(bot_id):
-
-    con = db()
-
-    row = con.execute(
-        "SELECT * FROM bots WHERE id=?",
-        (bot_id,)
-    ).fetchone()
-
-    con.close()
-
-    return row
-
-
-def get_bot_by_token(token):
-
-    con = db()
-
-    row = con.execute(
-        "SELECT * FROM bots WHERE token=?",
-        (token,)
-    ).fetchone()
-
-    con.close()
-
-    return row
-
-
-def get_owner_bots(owner_id):
-
-    con = db()
-
-    rows = con.execute(
-        """
-        SELECT *
-        FROM bots
-        WHERE owner_id=?
-        ORDER BY id DESC
-        """,
-        (owner_id,)
-    ).fetchall()
-
-    con.close()
-
-    return rows
-
-
-def total_bots():
-
-    con = db()
-
-    n = con.execute(
-        """
-        SELECT COUNT(*) AS n
-        FROM bots
-        WHERE active=1
-        """
-    ).fetchone()["n"]
-
-    con.close()
-
-    return n
-
-
-# ============================================================
-# SETTINGS
-# ============================================================
-
-def get_setting(
-    bot_id,
-    key,
-    default=""
-):
-
-    con = db()
-
-    row = con.execute(
-        """
-        SELECT value
-        FROM bot_settings
-        WHERE bot_id=? AND key=?
-        """,
-        (
-            bot_id,
-            key
-        )
-    ).fetchone()
-
-    con.close()
-
-    if row:
-        return row["value"]
-
-    return default
-
-
-def set_setting(
-    bot_id,
-    key,
-    value
-):
-
-    con = db()
-
-    con.execute(
-        """
-        INSERT INTO bot_settings(
-            bot_id,
-            key,
-            value
-        )
-        VALUES(?,?,?)
-
-        ON CONFLICT(bot_id,key)
-        DO UPDATE SET
-            value=excluded.value
-        """,
-        (
-            bot_id,
-            key,
-            value
-        )
-    )
-
-    con.commit()
-    con.close()
-
-
-# ============================================================
-# BOT USERS
-# ============================================================
-
-def add_bot_user(
-    bot_id,
-    user
-):
-
-    con = db()
-
-    con.execute(
-        """
-        INSERT INTO bot_users(
-            bot_id,
-            user_id,
-            username,
-            first_name,
-            joined_at
-        )
-        VALUES(?,?,?,?,?)
-
-        ON CONFLICT(bot_id,user_id)
-        DO UPDATE SET
-            username=excluded.username,
-            first_name=excluded.first_name
-        """,
-        (
-            bot_id,
-            user.id,
-            user.username or "",
-            user.first_name or "",
-            now()
-        )
-    )
-
-    con.commit()
-    con.close()
-
-
-def bot_user_ids(bot_id):
-
-    con = db()
-
-    rows = con.execute(
-        """
-        SELECT user_id
-        FROM bot_users
-        WHERE bot_id=?
-        """,
-        (bot_id,)
-    ).fetchall()
-
-    con.close()
-
-    return [
-        int(row["user_id"])
-        for row in rows
-    ]
-
-
-def bot_user_count(bot_id):
-
-    con = db()
-
-    n = con.execute(
-        """
-        SELECT COUNT(*) AS n
-        FROM bot_users
-        WHERE bot_id=?
-        """,
-        (bot_id,)
-    ).fetchone()["n"]
-
-    con.close()
-
-    return n
-
-
-# ============================================================
-# BUTTON SYSTEM
-# ============================================================
-
-def add_button(
-    bot_id,
-    text,
-    action,
-    value="",
-    row=0,
-    col=0,
-    style="reply"
-):
-
-    con = db()
-
-    con.execute(
-        """
-        INSERT INTO buttons(
-            bot_id,
-            text,
-            action,
-            value,
-            row,
-            col,
-            style
-        )
-        VALUES(?,?,?,?,?,?,?)
-        """,
-        (
-            bot_id,
-            text,
-            action,
-            value,
-            row,
-            col,
-            style
-        )
-    )
-
-    con.commit()
-    con.close()
-
-
-def get_buttons(
-    bot_id,
-    style=None
-):
-
-    con = db()
-
-    if style:
-
-        rows = con.execute(
-            """
-            SELECT *
-            FROM buttons
-            WHERE bot_id=?
-            AND style=?
-            AND active=1
-            ORDER BY row,col,id
-            """,
-            (
-                bot_id,
-                style
-            )
-        ).fetchall()
-
-    else:
-
-        rows = con.execute(
-            """
-            SELECT *
-            FROM buttons
-            WHERE bot_id=?
-            AND active=1
-            ORDER BY row,col,id
-            """,
-            (bot_id,)
-        ).fetchall()
-
-    con.close()
-
-    return rows
-
-
-def delete_button(
-    button_id,
-    bot_id
-):
-
-    con = db()
-
-    con.execute(
-        """
-        UPDATE buttons
-        SET active=0
-        WHERE id=? AND bot_id=?
-        """,
-        (
-            button_id,
-            bot_id
-        )
-    )
-
-    con.commit()
-    con.close()
-
-
-# ============================================================
-# LOGGING
-# ============================================================
-
-def log_event(
-    bot_id,
-    user_id,
-    event,
-    data=""
-):
-
-    con = db()
-
-    con.execute(
-        """
-        INSERT INTO logs(
-            bot_id,
-            user_id,
-            event,
-            data,
-            created_at
-        )
-        VALUES(?,?,?,?,?)
-        """,
-        (
-            bot_id,
-            user_id,
-            event,
-            data,
-            now()
-        )
-    )
-
-    con.commit()
-    con.close()
-
-
-# ============================================================
-# VARIABLES
-# ============================================================
-
-def set_variable(
-    bot_id,
-    name,
-    value
-):
-
-    con = db()
-
-    con.execute(
-        """
-        INSERT INTO variables(
-            bot_id,
-            name,
-            value
-        )
-        VALUES(?,?,?)
-
-        ON CONFLICT(bot_id,name)
-        DO UPDATE SET
-            value=excluded.value
-        """,
-        (
-            bot_id,
-            name,
-            value
-        )
-    )
-
-    con.commit()
-    con.close()
-
-
-def get_variable(
-    bot_id,
-    name,
-    default=""
-):
-
-    con = db()
-
-    row = con.execute(
-        """
-        SELECT value
-        FROM variables
-        WHERE bot_id=? AND name=?
-        """,
-        (
-            bot_id,
-            name
-        )
-    ).fetchone()
-
-    con.close()
-
-    return row["value"] if row else default
-
-
-# ============================================================
-# MEMBERSHIP
-# ============================================================
-
-async def is_member(
-    bot,
-    user_id,
-    channel
-):
-
+# ---------------- join / captcha gate ----------------
+async def _is_member(context: ContextTypes.DEFAULT_TYPE, user_id: int) -> bool:
+    if not FORCE_JOIN_CHANNEL:
+        return True
     try:
-
-        member = await bot.get_chat_member(
-            channel,
-            user_id
+        member = await context.bot.get_chat_member(FORCE_JOIN_CHANNEL, user_id)
+        return member.status in (
+            ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER,
         )
-
-        return member.status in {
-            ChatMemberStatus.MEMBER,
-            ChatMemberStatus.ADMINISTRATOR,
-            ChatMemberStatus.OWNER,
-        }
-
-    except TelegramError:
-
-        return False
-
-
-async def check_required_join(
-    bot,
-    user_id
-):
-
-    if not REQUIRED_CHANNEL:
-        return True
-
-    return await is_member(
-        bot,
-        user_id,
-        REQUIRED_CHANNEL
-    )
-
-
-def join_keyboard():
-
-    username = REQUIRED_CHANNEL.lstrip("@")
-
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "📢 عضویت در کانال",
-                url=f"https://t.me/{username}"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "✅ بررسی عضویت",
-                callback_data="join:check"
-            )
-        ]
-    ])
-
-
-# ============================================================
-# CAPTCHA
-# ============================================================
-
-def make_captcha():
-
-    a = secrets.randbelow(9) + 1
-    b = secrets.randbelow(9) + 1
-
-    return a, b, a + b
-
-
-# ============================================================
-# MAIN KEYBOARD
-# ============================================================
-
-def main_keyboard():
-
-    return ReplyKeyboardMarkup(
-        [
-            [
-                KeyboardButton("🤖 ساخت ربات"),
-                KeyboardButton("📦 ربات‌های من"),
-            ],
-            [
-                KeyboardButton("👤 حساب کاربری"),
-                KeyboardButton("🎫 پشتیبانی"),
-            ],
-            [
-                KeyboardButton("⭐ امکانات"),
-                KeyboardButton("📚 راهنما"),
-            ],
-        ],
-        resize_keyboard=True,
-        is_persistent=True
-    )
-
-
-# ============================================================
-# OWNER PANEL
-# ============================================================
-
-def owner_keyboard():
-
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "📊 آمار",
-                callback_data="owner:stats"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "👥 کاربران",
-                callback_data="owner:users"
-            ),
-            InlineKeyboardButton(
-                "🤖 ربات‌ها",
-                callback_data="owner:bots"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📣 Broadcast",
-                callback_data="owner:broadcast"
-            ),
-            InlineKeyboardButton(
-                "🎫 تیکت‌ها",
-                callback_data="owner:tickets"
-            )
-        ],
-    ])
-
-
-# ============================================================
-# BOT PANEL
-# ============================================================
-
-def bot_panel(bot_id):
-
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "👥 کاربران",
-                callback_data=f"bot:users:{bot_id}"
-            ),
-            InlineKeyboardButton(
-                "🎨 دکمه‌ها",
-                callback_data=f"bot:buttons:{bot_id}"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "👋 خوش‌آمد",
-                callback_data=f"bot:welcome:{bot_id}"
-            ),
-            InlineKeyboardButton(
-                "⚙️ تنظیمات",
-                callback_data=f"bot:settings:{bot_id}"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📣 Broadcast",
-                callback_data=f"bot:broadcast:{bot_id}"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "⛔ توقف",
-                callback_data=f"bot:stop:{bot_id}"
-            ),
-            InlineKeyboardButton(
-                "▶️ اجرا",
-                callback_data=f"bot:start:{bot_id}"
-            )
-        ],
-    ])
-
-
-# ============================================================
-# START
-# ============================================================
-
-async def start(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    user = update.effective_user
-
-    add_user(user)
-
-    if not context.user_data.get(
-        "captcha_ok"
-    ):
-
-        a, b, answer = make_captcha()
-
-        context.user_data[
-            "captcha_answer"
-        ] = answer
-
-        await update.message.reply_text(
-            "🛡️ تأیید امنیتی\n\n"
-            f"➕ {a} + {b} = ؟\n\n"
-            "جواب را فقط به صورت عدد بفرست."
-        )
-
-        return
-
-    if not await check_required_join(
-        context.bot,
-        user.id
-    ):
-
-        await update.message.reply_text(
-            "🔒 برای استفاده از ربات ابتدا "
-            "عضو کانال شوید:",
-            reply_markup=join_keyboard()
-        )
-
-        return
-
-    await update.message.reply_text(
-        "🔥 به Iran Golf Bot Builder خوش آمدی!\n\n"
-        "با این ربات می‌توانی ربات تلگرامی خودت "
-        "را بسازی و مدیریت کنی.",
-        reply_markup=main_keyboard()
-    )
-
-
-# ============================================================
-# CREATE BOT
-# ============================================================
-
-async def begin_create_bot(
-    update,
-    context
-):
-
-    context.user_data[
-        "state"
-    ] = "bot_name"
-
-    await update.message.reply_text(
-        "🚀 ساخت ربات جدید\n\n"
-        "اسم ربات را بفرست:"
-    )
-
-
-async def process_create_bot(
-    update,
-    context
-):
-
-    text = (
-        update.message.text or ""
-    ).strip()
-
-    state = context.user_data.get(
-        "state"
-    )
-
-    if state == "bot_name":
-
-        context.user_data[
-            "new_bot_name"
-        ] = text
-
-        context.user_data[
-            "state"
-        ] = "bot_token"
-
-        await update.message.reply_text(
-            "✅ نام ذخیره شد.\n\n"
-            "حالا توکن ربات را که از "
-            "@BotFather گرفته‌ای بفرست."
-        )
-
-        return True
-
-    if state == "bot_token":
-
-        token = text
-
-        if not re.fullmatch(
-            r"\d{5,12}:[A-Za-z0-9_-]{20,}",
-            token
-        ):
-
-            await update.message.reply_text(
-                "❌ فرمت توکن درست نیست."
-            )
-
-            return True
-
-        await update.message.reply_text(
-            "⏳ در حال بررسی توکن..."
-        )
-
-        try:
-
-            test_bot = Bot(
-                token=token
-            )
-
-            me = await test_bot.get_me()
-
-            await test_bot.close()
-
-        except Exception:
-
-            await update.message.reply_text(
-                "❌ توکن معتبر نیست."
-            )
-
-            return True
-
-        if get_bot_by_token(token):
-
-            await update.message.reply_text(
-                "⚠️ این ربات قبلاً ثبت شده."
-            )
-
-            return True
-
-        name = context.user_data.get(
-            "new_bot_name",
-            me.first_name or "Bot"
-        )
-
-        bot_id = create_bot(
-            update.effective_user.id,
-            token,
-            me.username,
-            name
-        )
-
-        add_button(
-            bot_id,
-            "🏠 خانه",
-            "home",
-            row=0,
-            col=0,
-            style="reply"
-        )
-
-        add_button(
-            bot_id,
-            "ℹ️ درباره ما",
-            "about",
-            row=0,
-            col=1,
-            style="reply"
-        )
-
-        add_button(
-            bot_id,
-            "🎫 پشتیبانی",
-            "support",
-            row=1,
-            col=0,
-            style="reply"
-        )
-
-        add_button(
-            bot_id,
-            "📞 تماس",
-            "contact",
-            row=1,
-            col=1,
-            style="reply"
-        )
-
-        context.user_data.pop(
-            "state",
-            None
-        )
-
-        context.user_data.pop(
-            "new_bot_name",
-            None
-        )
-
-        await start_child_bot(
-            bot_id,
-            token
-        )
-
-        link = (
-            f"https://t.me/{me.username}"
-            if me.username
-            else "-"
-        )
-
-        await update.message.reply_text(
-            "🎉 ربات ساخته شد!\n\n"
-            f"🤖 نام: {me.first_name}\n"
-            f"🔗 @{me.username or '-'}\n"
-            f"🆔 ID: {me.id}\n\n"
-            f"🚀 لینک:\n{link}",
-            reply_markup=main_keyboard()
-        )
-
-        return True
-
-    return False
-
-
-# ============================================================
-# MAIN TEXT HANDLER
-# ============================================================
-
-async def main_text(
-    update,
-    context
-):
-
-    if not update.message:
-        return
-
-    user = update.effective_user
-
-    add_user(user)
-
-    text = (
-        update.message.text or ""
-    ).strip()
-
-    # CAPTCHA
-    if "captcha_answer" in context.user_data:
-
-        answer = context.user_data[
-            "captcha_answer"
-        ]
-
-        if text.isdigit() and int(text) == answer:
-
-            context.user_data[
-                "captcha_ok"
-            ] = True
-
-            context.user_data.pop(
-                "captcha_answer",
-                None
-            )
-
-            await update.message.reply_text(
-                "✅ تأیید شد!\n\n"
-                "حالا عضویت کانال را بررسی کن.",
-                reply_markup=join_keyboard()
-            )
-
-        else:
-
-            await update.message.reply_text(
-                "❌ جواب اشتباه است."
-            )
-
-        return
-
-    if not context.user_data.get(
-        "captcha_ok"
-    ):
-
-        await start(
-            update,
-            context
-        )
-
-        return
-
-    if not await check_required_join(
-        context.bot,
-        user.id
-    ):
-
-        await update.message.reply_text(
-            "🔒 ابتدا عضو کانال شوید.",
-            reply_markup=join_keyboard()
-        )
-
-        return
-
-    # CREATE
-    if text == "🤖 ساخت ربات":
-
-        await begin_create_bot(
-            update,
-            context
-        )
-
-        return
-
-    # MY BOTS
-    if text == "📦 ربات‌های من":
-
-        rows = get_owner_bots(
-            user.id
-        )
-
-        if not rows:
-
-            await update.message.reply_text(
-                "📦 هنوز رباتی نساخته‌ای."
-            )
-
-            return
-
-        keyboard = []
-
-        for row in rows:
-
-            keyboard.append([
-                InlineKeyboardButton(
-                    (
-                        "🤖 " +
-                        (
-                            row["name"]
-                            or row["username"]
-                            or "Bot"
-                        )
-                    ),
-                    callback_data=(
-                        f"openbot:{row['id']}"
-                    )
-                )
-            ])
-
-        await update.message.reply_text(
-            "📦 ربات‌های شما:",
-            reply_markup=InlineKeyboardMarkup(
-                keyboard
-            )
-        )
-
-        return
-
-    # PROFILE
-    if text == "👤 حساب کاربری":
-
-        await update.message.reply_text(
-            "👤 حساب کاربری\n\n"
-            f"🆔 ID: `{user.id}`\n"
-            f"👤 نام: {user.full_name}\n"
-            f"🔗 Username: "
-            f"@{user.username or '-'}",
-            parse_mode="Markdown"
-        )
-
-        return
-
-    # SUPPORT
-    if text == "🎫 پشتیبانی":
-
-        context.user_data[
-            "state"
-        ] = "support"
-
-        await update.message.reply_text(
-            "🎫 پیام خود را بفرست."
-        )
-
-        return
-
-    # FEATURES
-    if text == "⭐ امکانات":
-
-        await update.message.reply_text(
-            "⭐ امکانات سیستم\n\n"
-            "🤖 ساخت چند ربات\n"
-            "🎨 Reply Keyboard\n"
-            "🔘 Inline Keyboard\n"
-            "🌐 WebApp\n"
-            "📣 Broadcast\n"
-            "👥 مدیریت کاربران\n"
-            "🎫 پشتیبانی\n"
-            "📊 آمار\n"
-            "🔐 عضویت اجباری\n"
-            "👮 ادمین\n"
-            "🚫 Ban / Unban\n"
-            "📌 Pin / Unpin\n"
-            "📊 Poll\n"
-            "💎 Stars / Payments\n"
-            "🎁 Gifts\n"
-            "📱 Mini App\n"
-            "🧩 Variables"
-        )
-
-        return
-
-    # HELP
-    if text == "📚 راهنما":
-
-        await update.message.reply_text(
-            "📚 راهنما\n\n"
-            "۱. ساخت ربات را بزن.\n"
-            "۲. نام را وارد کن.\n"
-            "۳. توکن BotFather را بفرست.\n"
-            "۴. ربات اجرا می‌شود.\n"
-            "۵. از پنل مدیریت استفاده کن."
-        )
-
-        return
-
-    # CREATE STATES
-    if await process_create_bot(
-        update,
-        context
-    ):
-
-        return
-
-    # SUPPORT STATE
-    if context.user_data.get(
-        "state"
-    ) == "support":
-
-        context.user_data.pop(
-            "state",
-            None
-        )
-
-        if OWNER_ID:
-
-            try:
-
-                await context.bot.send_message(
-                    OWNER_ID,
-                    "🎫 تیکت جدید\n\n"
-                    f"👤 {user.full_name}\n"
-                    f"🆔 {user.id}\n\n"
-                    f"💬 {text}"
-                )
-
-            except TelegramError:
-                pass
-
-        await update.message.reply_text(
-            "✅ پیام شما برای پشتیبانی ارسال شد.",
-            reply_markup=main_keyboard()
-        )
-
-        return
-
-    # BROADCAST
-    if context.user_data.get(
-        "state"
-    ) == "global_broadcast":
-
-        if user.id != OWNER_ID:
-            return
-
-        await global_broadcast(
-            update,
-            context,
-            text
-        )
-
-        return
-
-    await update.message.reply_text(
-        "از منوی پایین استفاده کن 👇",
-        reply_markup=main_keyboard()
-    )
-
-
-# ============================================================
-# MAIN CALLBACK
-# ============================================================
-
-async def main_callback(
-    update,
-    context
-):
-
-    query = update.callback_query
-
-    await query.answer()
-
-    data = query.data or ""
-
-    # JOIN
-    if data == "join:check":
-
-        if await check_required_join(
-            context.bot,
-            query.from_user.id
-        ):
-
-            context.user_data[
-                "captcha_ok"
-            ] = True
-
-            await query.message.reply_text(
-                "✅ عضویت تأیید شد!",
-                reply_markup=main_keyboard()
-            )
-
-        else:
-
-            await query.answer(
-                "❌ هنوز عضو کانال نیستید.",
-                show_alert=True
-            )
-
-        return
-
-    # OPEN BOT
-    if data.startswith(
-        "openbot:"
-    ):
-
-        bot_id = int(
-            data.split(":")[1]
-        )
-
-        row = get_bot(bot_id)
-
-        if not row:
-            return
-
-        if row["owner_id"] != query.from_user.id:
-            await query.answer(
-                "⛔ دسترسی ندارید.",
-                show_alert=True
-            )
-            return
-
-        await query.message.reply_text(
-            "⚙️ پنل مدیریت ربات\n\n"
-            f"🤖 {row['name']}\n"
-            f"🔗 @{row['username'] or '-'}\n"
-            f"👥 کاربران: "
-            f"{bot_user_count(bot_id)}",
-            reply_markup=bot_panel(bot_id)
-        )
-
-        return
-
-    # BOT PANEL
-    if data.startswith(
-        "bot:"
-    ):
-
-        parts = data.split(":")
-
-        if len(parts) != 3:
-            return
-
-        action = parts[1]
-        bot_id = int(parts[2])
-
-        row = get_bot(bot_id)
-
-        if not row:
-            return
-
-        if row["owner_id"] != query.from_user.id:
-
-            await query.answer(
-                "⛔ دسترسی ندارید.",
-                show_alert=True
-            )
-
-            return
-
-        if action == "users":
-
-            await query.message.reply_text(
-                "👥 کاربران ربات:\n\n"
-                f"{bot_user_count(bot_id)} نفر"
-            )
-
-        elif action == "welcome":
-
-            await query.message.reply_text(
-                "👋 پیام خوش‌آمد:\n\n"
-                + get_setting(
-                    bot_id,
-                    "welcome"
-                )
-            )
-
-        elif action == "settings":
-
-            await query.message.reply_text(
-                "⚙️ تنظیمات ربات\n\n"
-                "از ساختار تنظیمات این پنل "
-                "برای توسعه قابلیت‌ها استفاده کن."
-            )
-
-        elif action == "buttons":
-
-            buttons = get_buttons(
-                bot_id
-            )
-
-            if not buttons:
-
-                await query.message.reply_text(
-                    "هنوز دکمه‌ای وجود ندارد."
-                )
-
-                return
-
-            text = "🎨 دکمه‌های فعال:\n\n"
-
-            for b in buttons:
-
-                text += (
-                    f"• {b['text']} "
-                    f"→ {b['action']}\n"
-                )
-
-            await query.message.reply_text(
-                text
-            )
-
-        elif action == "broadcast":
-
-            context.user_data[
-                "state"
-            ] = "bot_broadcast"
-
-            context.user_data[
-                "broadcast_bot"
-            ] = bot_id
-
-            await query.message.reply_text(
-                "📣 متن Broadcast را بفرست."
-            )
-
-        elif action == "stop":
-
-            con = db()
-
-            con.execute(
-                """
-                UPDATE bots
-                SET active=0
-                WHERE id=?
-                """,
-                (bot_id,)
-            )
-
-            con.commit()
-            con.close()
-
-            await stop_child_bot(
-                row["token"]
-            )
-
-            await query.message.reply_text(
-                "⛔ ربات متوقف شد."
-            )
-
-        elif action == "start":
-
-            con = db()
-
-            con.execute(
-                """
-                UPDATE bots
-                SET active=1
-                WHERE id=?
-                """,
-                (bot_id,)
-            )
-
-            con.commit()
-            con.close()
-
-            await start_child_bot(
-                bot_id,
-                row["token"]
-            )
-
-            await query.message.reply_text(
-                "▶️ ربات فعال شد."
-            )
-
-        return
-
-    # OWNER
-    if data.startswith(
-        "owner:"
-    ):
-
-        if query.from_user.id != OWNER_ID:
-
-            await query.answer(
-                "⛔ فقط مدیر اصلی.",
-                show_alert=True
-            )
-
-            return
-
-        action = data.split(":")[1]
-
-        if action == "stats":
-
-            await query.message.reply_text(
-                "📊 آمار\n\n"
-                f"👥 کاربران: {total_users()}\n"
-                f"🤖 ربات‌ها: {total_bots()}"
-            )
-
-        elif action == "users":
-
-            await query.message.reply_text(
-                f"👥 تعداد کاربران:\n"
-                f"{total_users()}"
-            )
-
-        elif action == "bots":
-
-            await query.message.reply_text(
-                f"🤖 تعداد ربات‌های فعال:\n"
-                f"{total_bots()}"
-            )
-
-        elif action == "broadcast":
-
-            context.user_data[
-                "state"
-            ] = "global_broadcast"
-
-            await query.message.reply_text(
-                "📣 متن Broadcast را بفرست."
-            )
-
-        return
-
-
-# ============================================================
-# BROADCAST
-# ============================================================
-
-async def broadcast_to_users(
-    bot,
-    user_ids,
-    text,
-    limit=None
-):
-
-    sent = 0
-    failed = 0
-
-    if limit:
-        user_ids = user_ids[:limit]
-
-    for user_id in user_ids:
-
-        try:
-
-            await bot.send_message(
-                user_id,
-                text
-            )
-
-            sent += 1
-
-        except (
-            TelegramError,
-            Forbidden,
-            BadRequest
-        ):
-
-            failed += 1
-
-        await asyncio.sleep(
-            0.05
-        )
-
-    return sent, failed
-
-
-async def global_broadcast(
-    update,
-    context,
-    text
-):
-
-    con = db()
-
-    rows = con.execute(
-        """
-        SELECT user_id
-        FROM users
-        WHERE blocked=0
-        """
-    ).fetchall()
-
-    con.close()
-
-    ids = [
-        int(row["user_id"])
-        for row in rows
-    ]
-
-    sent, failed = await broadcast_to_users(
-        context.bot,
-        ids,
-        text,
-        FREE_BROADCAST_LIMIT
-    )
-
-    context.user_data.pop(
-        "state",
-        None
-    )
-
-    await update.message.reply_text(
-        "📣 Broadcast تمام شد.\n\n"
-        f"✅ ارسال: {sent}\n"
-        f"❌ خطا: {failed}"
-    )
-
-
-# ============================================================
-# CHILD KEYBOARDS
-# ============================================================
-
-def child_reply_keyboard(
-    bot_id
-):
-
-    buttons = get_buttons(
-        bot_id,
-        "reply"
-    )
-
-    rows = {}
-
-    for button in buttons:
-
-        row = int(
-            button["row"]
-        )
-
-        rows.setdefault(
-            row,
-            []
-        ).append(
-            KeyboardButton(
-                button["text"]
-            )
-        )
-
-    if not rows:
-        return None
-
-    return ReplyKeyboardMarkup(
-        [
-            rows[key]
-            for key in sorted(rows)
-        ],
-        resize_keyboard=True,
-        is_persistent=True
-    )
-
-
-def child_inline_keyboard(
-    bot_id
-):
-
-    buttons = get_buttons(
-        bot_id,
-        "inline"
-    )
-
-    rows = {}
-
-    for button in buttons:
-
-        row = int(
-            button["row"]
-        )
-
-        rows.setdefault(
-            row,
-            []
-        ).append(
-            InlineKeyboardButton(
-                button["text"],
-                callback_data=(
-                    f"button:{button['id']}"
-                )
-            )
-        )
-
-    if not rows:
-        return None
-
-    return InlineKeyboardMarkup(
-        [
-            rows[key]
-            for key in sorted(rows)
-        ]
-    )
-
-
-# ============================================================
-# VARIABLE RENDER
-# ============================================================
-
-def render_text(
-    text,
-    user,
-    bot_id
-):
-
-    replacements = {
-
-        "{{user_id}}":
-            str(user.id),
-
-        "{{username}}":
-            user.username or "",
-
-        "{{first_name}}":
-            user.first_name or "",
-
-        "{{last_name}}":
-            user.last_name or "",
-
-        "{{name}}":
-            user.full_name or "",
-    }
-
-    for key, value in replacements.items():
-
-        text = text.replace(
-            key,
-            value
-        )
-
-    return text
-
-
-# ============================================================
-# CHILD START
-# ============================================================
-
-async def child_start(
-    update,
-    context
-):
-
-    bot_id = context.bot_data[
-        "bot_id"
-    ]
-
-    user = update.effective_user
-
-    add_bot_user(
-        bot_id,
-        user
-    )
-
-    add_user(
-        user
-    )
-
-    if await is_banned(
-        bot_id,
-        user.id
-    ):
-
-        await update.message.reply_text(
-            "🚫 شما از این ربات مسدود شده‌اید."
-        )
-
-        return
-
-    log_event(
-        bot_id,
-        user.id,
-        "start"
-    )
-
-    welcome = render_text(
-        get_setting(
-            bot_id,
-            "welcome",
-            "سلام 👋"
-        ),
-        user,
-        bot_id
-    )
-
-    inline = child_inline_keyboard(
-        bot_id
-    )
-
-    await update.message.reply_text(
-        welcome,
-        reply_markup=inline
-        or child_reply_keyboard(bot_id)
-    )
-
-
-# ============================================================
-# CHILD TEXT
-# ============================================================
-
-async def child_text(
-    update,
-    context
-):
-
-    bot_id = context.bot_data[
-        "bot_id"
-    ]
-
-    user = update.effective_user
-
-    add_bot_user(
-        bot_id,
-        user
-    )
-
-    text = (
-        update.message.text or ""
-    ).strip()
-
-    if await is_banned(
-        bot_id,
-        user.id
-    ):
-
-        await update.message.reply_text(
-            "🚫 دسترسی شما مسدود است."
-        )
-
-        return
-
-    con = db()
-
-    button = con.execute(
-        """
-        SELECT *
-        FROM buttons
-        WHERE bot_id=?
-        AND text=?
-        AND style='reply'
-        AND active=1
-        LIMIT 1
-        """,
-        (
-            bot_id,
-            text
-        )
-    ).fetchone()
-
-    con.close()
-
-    if button:
-
-        await execute_action(
-            update.message,
-            user,
-            bot_id,
-            button["action"],
-            button["value"]
-        )
-
-        return
-
-    await update.message.reply_text(
-        "پیامت دریافت شد.",
-        reply_markup=child_reply_keyboard(
-            bot_id
-        )
-    )
-
-
-# ============================================================
-# CHILD CALLBACK
-# ============================================================
-
-async def child_callback(
-    update,
-    context
-):
-
-    query = update.callback_query
-
-    await query.answer()
-
-    bot_id = context.bot_data[
-        "bot_id"
-    ]
-
-    user = query.from_user
-
-    if query.data.startswith(
-        "button:"
-    ):
-
-        button_id = int(
-            query.data.split(":")[1]
-        )
-
-        con = db()
-
-        button = con.execute(
-            """
-            SELECT *
-            FROM buttons
-            WHERE id=? AND bot_id=?
-            """,
-            (
-                button_id,
-                bot_id
-            )
-        ).fetchone()
-
-        con.close()
-
-        if not button:
-            return
-
-        await execute_action(
-            query.message,
-            user,
-            bot_id,
-            button["action"],
-            button["value"]
-        )
-
-
-# ============================================================
-# CHILD ACTIONS
-# ============================================================
-
-async def execute_action(
-    message,
-    user,
-    bot_id,
-    action,
-    value
-):
-
-    value = render_text(
-        value or "",
-        user,
-        bot_id
-    )
-
-    if action == "home":
-
-        await message.reply_text(
-            render_text(
-                get_setting(
-                    bot_id,
-                    "welcome",
-                    "سلام 👋"
-                ),
-                user,
-                bot_id
-            ),
-            reply_markup=child_reply_keyboard(
-                bot_id
-            )
-        )
-
-    elif action == "about":
-
-        await message.reply_text(
-            render_text(
-                get_setting(
-                    bot_id,
-                    "about",
-                    "درباره ما"
-                ),
-                user,
-                bot_id
-            )
-        )
-
-    elif action == "contact":
-
-        await message.reply_text(
-            render_text(
-                get_setting(
-                    bot_id,
-                    "contact",
-                    "تماس با ما"
-                ),
-                user,
-                bot_id
-            )
-        )
-
-    elif action == "support":
-
-        await message.reply_text(
-            render_text(
-                get_setting(
-                    bot_id,
-                    "support",
-                    "پیام خود را بفرست."
-                ),
-                user,
-                bot_id
-            )
-        )
-
-    elif action == "message":
-
-        await message.reply_text(
-            value or "پیام تنظیم نشده."
-        )
-
-    elif action == "url":
-
-        await message.reply_text(
-            value or "لینک تنظیم نشده."
-        )
-
-    elif action == "channel":
-
-        await message.reply_text(
-            "📢 کانال:\n"
-            + (
-                value
-                or REQUIRED_CHANNEL
-            )
-        )
-
-    elif action == "variable":
-
-        await message.reply_text(
-            value
-        )
-
-    elif action == "id":
-
-        await message.reply_text(
-            f"🆔 ID شما:\n{user.id}"
-        )
-
-    elif action == "username":
-
-        await message.reply_text(
-            f"🔗 Username:\n"
-            f"@{user.username or '-'}"
-        )
-
-    else:
-
-        await message.reply_text(
-            value or
-            "✅ عملیات انجام شد."
-        )
-
-
-# ============================================================
-# BAN SYSTEM
-# ============================================================
-
-def is_banned(
-    bot_id,
-    user_id
-):
-
-    con = db()
-
-    row = con.execute(
-        """
-        SELECT user_id
-        FROM banned_users
-        WHERE bot_id=? AND user_id=?
-        """,
-        (
-            bot_id,
-            user_id
-        )
-    ).fetchone()
-
-    con.close()
-
-    return bool(row)
-
-
-def ban_user(
-    bot_id,
-    user_id,
-    reason=""
-):
-
-    con = db()
-
-    con.execute(
-        """
-        INSERT OR REPLACE INTO banned_users(
-            bot_id,
-            user_id,
-            reason,
-            created_at
-        )
-        VALUES(?,?,?,?)
-        """,
-        (
-            bot_id,
-            user_id,
-            reason,
-            now()
-        )
-    )
-
-    con.commit()
-    con.close()
-
-
-def unban_user(
-    bot_id,
-    user_id
-):
-
-    con = db()
-
-    con.execute(
-        """
-        DELETE FROM banned_users
-        WHERE bot_id=? AND user_id=?
-        """,
-        (
-            bot_id,
-            user_id
-        )
-    )
-
-    con.commit()
-    con.close()
-
-
-# ============================================================
-# ADMIN SYSTEM
-# ============================================================
-
-def is_admin(
-    bot_id,
-    user_id
-):
-
-    bot = get_bot(
-        bot_id
-    )
-
-    if bot and bot["owner_id"] == user_id:
-        return True
-
-    con = db()
-
-    row = con.execute(
-        """
-        SELECT user_id
-        FROM admins
-        WHERE bot_id=? AND user_id=?
-        """,
-        (
-            bot_id,
-            user_id
-        )
-    ).fetchone()
-
-    con.close()
-
-    return bool(row)
-
-
-def add_admin(
-    bot_id,
-    user_id,
-    role="admin"
-):
-
-    con = db()
-
-    con.execute(
-        """
-        INSERT OR REPLACE INTO admins(
-            bot_id,
-            user_id,
-            role,
-            created_at
-        )
-        VALUES(?,?,?,?)
-        """,
-        (
-            bot_id,
-            user_id,
-            role,
-            now()
-        )
-    )
-
-    con.commit()
-    con.close()
-
-
-def remove_admin(
-    bot_id,
-    user_id
-):
-
-    con = db()
-
-    con.execute(
-        """
-        DELETE FROM admins
-        WHERE bot_id=? AND user_id=?
-        """,
-        (
-            bot_id,
-            user_id
-        )
-    )
-
-    con.commit()
-    con.close()
-
-
-# ============================================================
-# STARS / PAYMENTS
-# ============================================================
-
-def add_payment(
-    bot_id,
-    user_id,
-    payload,
-    currency,
-    amount,
-    status
-):
-
-    con = db()
-
-    con.execute(
-        """
-        INSERT INTO payments(
-            bot_id,
-            user_id,
-            payload,
-            currency,
-            amount,
-            status,
-            created_at
-        )
-        VALUES(?,?,?,?,?,?,?)
-        """,
-        (
-            bot_id,
-            user_id,
-            payload,
-            currency,
-            amount,
-            status,
-            now()
-        )
-    )
-
-    con.commit()
-    con.close()
-
-
-async def send_stars_invoice(
-    bot,
-    chat_id,
-    title,
-    description,
-    payload,
-    stars
-):
-
-    prices = [
-        LabeledPrice(
-            "⭐ Stars",
-            int(stars)
-        )
-    ]
-
-    await bot.send_invoice(
-        chat_id=chat_id,
-        title=title,
-        description=description,
-        payload=payload,
-        provider_token="",
-        currency="XTR",
-        prices=prices
-    )
-
-
-async def precheckout_handler(
-    update,
-    context
-):
-
-    query = update.pre_checkout_query
-
-    await query.answer(
-        ok=True
-    )
-
-
-async def successful_payment(
-    update,
-    context
-):
-
-    payment = (
-        update.message.successful_payment
-    )
-
-    if not payment:
-        return
-
-    bot_id = context.bot_data.get(
-        "bot_id",
-        0
-    )
-
-    add_payment(
-        bot_id,
-        update.effective_user.id,
-        payment.invoice_payload,
-        payment.currency,
-        payment.total_amount,
-        "paid"
-    )
-
-    await update.message.reply_text(
-        "✅ پرداخت با موفقیت انجام شد.\n"
-        "⭐ موجودی/محصول شما ثبت شد."
-    )
-
-
-# ============================================================
-# GIFTS / STARS RAW API HELPERS
-# ============================================================
-
-async def telegram_api(
-    bot_token,
-    method,
-    data=None
-):
-
-    import urllib.request
-    import urllib.parse
-
-    url = (
-        "https://api.telegram.org/bot"
-        + bot_token
-        + "/"
-        + method
-    )
-
-    payload = urllib.parse.urlencode(
-        data or {}
-    ).encode()
-
-    def request():
-
-        req = urllib.request.Request(
-            url,
-            data=payload,
-            method="POST"
-        )
-
-        with urllib.request.urlopen(
-            req,
-            timeout=30
-        ) as response:
-
-            return response.read().decode()
-
-    return await asyncio.to_thread(
-        request
-    )
-
-
-async def get_available_gifts(
-    bot_token
-):
-
-    try:
-
-        return await telegram_api(
-            bot_token,
-            "getAvailableGifts"
-        )
-
-    except Exception as exc:
-
-        return {
-            "ok": False,
-            "error": str(exc)
-        }
-
-
-# ============================================================
-# PIN MESSAGE
-# ============================================================
-
-async def pin_message(
-    bot,
-    chat_id,
-    message_id
-):
-
-    try:
-
-        await bot.pin_chat_message(
-            chat_id=chat_id,
-            message_id=message_id,
-            disable_notification=True
-        )
-
-        return True
-
-    except TelegramError:
-
-        return False
-
-
-async def unpin_message(
-    bot,
-    chat_id,
-    message_id
-):
-
-    try:
-
-        await bot.unpin_chat_message(
-            chat_id=chat_id,
-            message_id=message_id
-        )
-
-        return True
-
-    except TelegramError:
-
-        return False
-
-
-# ============================================================
-# POLL
-# ============================================================
-
-async def send_poll(
-    bot,
-    chat_id,
-    question,
-    options,
-    anonymous=True
-):
-
-    try:
-
-        await bot.send_poll(
-            chat_id=chat_id,
-            question=question,
-            options=options,
-            is_anonymous=anonymous
-        )
-
-        return True
-
-    except TelegramError:
-
-        return False
-
-
-# ============================================================
-# MEDIA HELPERS
-# ============================================================
-
-async def send_photo(
-    bot,
-    chat_id,
-    photo,
-    caption=""
-):
-
-    return await bot.send_photo(
-        chat_id=chat_id,
-        photo=photo,
-        caption=caption
-    )
-
-
-async def send_video(
-    bot,
-    chat_id,
-    video,
-    caption=""
-):
-
-    return await bot.send_video(
-        chat_id=chat_id,
-        video=video,
-        caption=caption
-    )
-
-
-async def send_document(
-    bot,
-    chat_id,
-    document,
-    caption=""
-):
-
-    return await bot.send_document(
-        chat_id=chat_id,
-        document=document,
-        caption=caption
-    )
-
-
-# ============================================================
-# CHILD APPLICATION
-# ============================================================
-
-async def start_child_bot(
-    bot_id,
-    token
-):
-
-    async with CHILD_START_LOCK:
-
-        if token in CHILD_APPS:
-            return
-
-        row = get_bot(
-            bot_id
-        )
-
-        if not row:
-            return
-
-        if not row["active"]:
-            return
-
-        try:
-
-            application = (
-                Application
-                .builder()
-                .token(token)
-                .build()
-            )
-
-            application.bot_data[
-                "bot_id"
-            ] = bot_id
-
-            application.add_handler(
-                CommandHandler(
-                    "start",
-                    child_start
-                )
-            )
-
-            application.add_handler(
-                CallbackQueryHandler(
-                    child_callback
-                )
-            )
-
-            application.add_handler(
-                PreCheckoutQueryHandler(
-                    precheckout_handler
-                )
-            )
-
-            application.add_handler(
-                MessageHandler(
-                    filters.SUCCESSFUL_PAYMENT,
-                    successful_payment
-                )
-            )
-
-            application.add_handler(
-                MessageHandler(
-                    filters.TEXT
-                    & ~filters.COMMAND,
-                    child_text
-                )
-            )
-
-            await application.initialize()
-
-            await application.start()
-
-            await application.updater.start_polling(
-                allowed_updates=Update.ALL_TYPES,
-                drop_pending_updates=True
-            )
-
-            CHILD_APPS[
-                token
-            ] = application
-
-            log.info(
-                "Child bot started: %s",
-                row["username"]
-            )
-
-        except Exception:
-
-            log.exception(
-                "Could not start child bot"
-            )
-
-
-async def stop_child_bot(
-    token
-):
-
-    application = CHILD_APPS.pop(
-        token,
-        None
-    )
-
-    if not application:
-        return
-
-    try:
-
-        if (
-            application.updater
-            and application.updater.running
-        ):
-
-            await application.updater.stop()
-
-        await application.stop()
-
-        await application.shutdown()
-
     except Exception:
-
-        log.exception(
-            "Could not stop child bot"
-        )
+        return False
 
 
-async def load_child_bots():
-
-    con = db()
-
-    rows = con.execute(
-        """
-        SELECT id, token
-        FROM bots
-        WHERE active=1
-        """
-    ).fetchall()
-
-    con.close()
-
-    for row in rows:
-
-        await start_child_bot(
-            row["id"],
-            row["token"]
-        )
-
-        await asyncio.sleep(
-            0.3
-        )
-
-
-# ============================================================
-# OWNER COMMANDS
-# ============================================================
-
-async def panel(
-    update,
-    context
-):
-
-    if update.effective_user.id != OWNER_ID:
-
-        await update.message.reply_text(
-            "⛔ دسترسی ندارید."
-        )
-
+async def _gate_and_show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, edit=False):
+    user = update.effective_user
+    if not await _is_member(context, user.id):
+        text = "برای استفاده از ربات، اول باید توی کانال ما عضو بشی 👇"
+        markup = kb.force_join_keyboard(FORCE_JOIN_CHANNEL)
+        if edit:
+            await update.callback_query.edit_message_text(text, reply_markup=markup)
+        else:
+            await update.message.reply_text(text, reply_markup=markup)
         return
 
-    await update.message.reply_text(
-        "👑 پنل مدیریت اصلی\n\n"
-        "Iran Golf Bot Builder",
-        reply_markup=owner_keyboard()
+    row = db.get_user(user.id)
+    if not row or not row["captcha_passed"]:
+        text, correct, markup = build_captcha()
+        context.user_data["captcha_answer"] = correct
+        if edit:
+            await update.callback_query.edit_message_text(text, reply_markup=markup)
+        else:
+            await update.message.reply_text(text, reply_markup=markup)
+        return
+
+    text = "منوی اصلی 🤖\nاز دکمه‌های زیر یکی رو انتخاب کن:"
+    if edit:
+        await update.callback_query.edit_message_text(text, reply_markup=kb.main_menu_keyboard())
+    else:
+        await update.message.reply_text(text, reply_markup=kb.main_menu_keyboard())
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    referred_by = None
+    if context.args and context.args[0].startswith("ref"):
+        try:
+            referred_by = int(context.args[0][3:])
+        except ValueError:
+            pass
+    is_new = db.upsert_user(user.id, user.username or "", referred_by)
+    if is_new and referred_by and referred_by != user.id:
+        db.add_bonus_slot(referred_by, 1)
+        try:
+            await context.bot.send_message(
+                referred_by,
+                "🎉 یک نفر با لینک دعوت تو وارد شد! یک ظرفیت ربات رایگان اضافه بهت اضافه شد.",
+            )
+        except Exception:
+            pass
+    await _gate_and_show_menu(update, context, edit=False)
+
+
+async def check_join_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not await _is_member(context, query.from_user.id):
+        await query.answer("هنوز عضو نشدی!", show_alert=True)
+        return
+    await _gate_and_show_menu(update, context, edit=True)
+
+
+async def captcha_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    _, chosen, correct = query.data.split(":")
+    if chosen != correct:
+        await query.answer("❌ غلطه، دوباره امتحان کن", show_alert=True)
+        text, correct_new, markup = build_captcha()
+        context.user_data["captcha_answer"] = correct_new
+        await query.edit_message_text(text, reply_markup=markup)
+        return
+    db.set_captcha_passed(query.from_user.id)
+    await query.answer("✅ تایید شد")
+    await query.edit_message_text(
+        "منوی اصلی 🤖\nاز دکمه‌های زیر یکی رو انتخاب کن:", reply_markup=kb.main_menu_keyboard()
     )
 
 
-async def my_id(
-    update,
-    context
-):
-
-    await update.message.reply_text(
-        "🆔 آیدی عددی شما:\n\n"
-        f"`{update.effective_user.id}`",
-        parse_mode="Markdown"
+async def back_main_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(
+        "منوی اصلی 🤖\nاز دکمه‌های زیر یکی رو انتخاب کن:", reply_markup=kb.main_menu_keyboard()
     )
 
 
-# ============================================================
-# BOTFATHER-LIKE HELP
-# ============================================================
-
-async def botfather_help(
-    update,
-    context
-):
-
-    await update.message.reply_text(
-        "🤖 راهنمای ساخت ربات\n\n"
-        "۱️⃣ وارد @BotFather شو.\n"
-        "۲️⃣ /newbot را بزن.\n"
-        "۳️⃣ نام ربات را انتخاب کن.\n"
-        "۴️⃣ username را انتخاب کن.\n"
-        "۵️⃣ Token را دریافت کن.\n"
-        "۶️⃣ Token را فقط داخل پنل خودت وارد کن.\n\n"
-        "⚠️ Token را عمومی منتشر نکن."
+async def referral_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    me = await context.bot.get_me()
+    uid = query.from_user.id
+    link = f"https://t.me/{me.username}?start=ref{uid}"
+    invited = db.count_referrals(uid)
+    bonus = db.get_bonus_slots(uid)
+    await query.edit_message_text(
+        f"🔗 لینک دعوت تو:\n{link}\n\n"
+        f"👥 تعداد دعوت‌شده‌ها: {invited}\n"
+        f"🎁 ظرفیت رایگان اضافه‌شده: {bonus} ربات\n\n"
+        "به‌ازای هر نفری که با این لینک وارد بشه، یک ظرفیت ربات رایگان بیشتر می‌گیری.",
+        reply_markup=kb.main_menu_keyboard(),
     )
 
 
-# ============================================================
-# POST INIT
-# ============================================================
+# ---------------- create bot ----------------
+async def create_bot_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    owner_id = query.from_user.id
+    limit = _bot_limit(owner_id)
+    if db.count_user_bots(owner_id) >= limit:
+        await query.edit_message_text(
+            f"❌ به سقف {limit} ربات رسیدی. برای ساخت بیشتر، اشتراک ویژه بگیر یا دوستاتو با لینک دعوت بیار.",
+            reply_markup=kb.subscription_keyboard(SUBSCRIPTION_STARS_PRICE),
+        )
+        return ConversationHandler.END
+    await query.edit_message_text(
+        "توکن ربات رو بفرست.\n\n"
+        "راهنما: به @BotFather پیام بده، /newbot بزن، بعد توکنی که میده رو اینجا پیست کن."
+    )
+    return WAITING_TOKEN
 
-async def post_init(
-    application
-):
 
-    init_db()
+async def create_bot_receive_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    token = update.message.text.strip()
+    owner_id = update.effective_user.id
+    if db.get_bot_by_token(token):
+        await update.message.reply_text("این توکن قبلاً ثبت شده. یه توکن دیگه بفرست یا /cancel بزن.")
+        return WAITING_TOKEN
+
+    info = await bot_manager.validate_token(token)
+    if not info:
+        await update.message.reply_text("❌ توکن معتبر نیست. دوباره امتحان کن یا /cancel بزن.")
+        return WAITING_TOKEN
+
+    bot_id = db.create_child_bot(owner_id, token, info.username)
+    await bot_manager.start_child_bot(bot_id, token)
+    panel_url = f"https://t.me/{info.username}?start=panel"
+    await update.message.reply_text(
+        f"✅ ربات @{info.username} با موفقیت ساخته و روشن شد!\n\n"
+        "قدم بعدی — برو به «📂 ربات‌های من» و:\n"
+        "۱. چند تا دکمه اضافه کن (➕ افزودن دکمه)\n"
+        "۲. نوع کیبورد رو انتخاب کن (شیشه‌ای/پایین صفحه/منو/رنگی)\n"
+        "۳. اگه خواستی، عضویت اجباری یا محتوای قفل‌شده هم تنظیم کن\n"
+        "همین! ربات‌ت همین الان برای کاربرا فعاله.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("⚙️ باز کردن پنل مدیریت همین ربات", url=panel_url)],
+            [InlineKeyboardButton("⬅️ منوی اصلی", callback_data="back_main")],
+        ]),
+    )
+    return ConversationHandler.END
+
+
+# ---------------- my bots / manage ----------------
+async def my_bots_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    bots = db.get_user_bots(query.from_user.id)
+    if not bots:
+        await query.edit_message_text(
+            "هنوز رباتی نساختی.", reply_markup=kb.main_menu_keyboard()
+        )
+        return
+    await query.edit_message_text("ربات‌های تو:", reply_markup=kb.my_bots_keyboard(query.from_user.id))
+
+
+async def bot_menu_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    bot_id = int(query.data.split(":")[1])
+    row = db.get_bot(bot_id)
+    if not row or row["owner_id"] != query.from_user.id:
+        await query.answer("دسترسی نداری", show_alert=True)
+        return
+    await query.edit_message_text(
+        f"مدیریت ربات @{row['username']}",
+        reply_markup=kb.bot_manage_keyboard(bot_id, bool(row["is_active"]), bool(row["reactions_enabled"])),
+    )
+
+
+async def toggle_active_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    bot_id = int(query.data.split(":")[1])
+    row = db.get_bot(bot_id)
+    if not row or row["owner_id"] != query.from_user.id:
+        await query.answer("دسترسی نداری", show_alert=True)
+        return
+    new_state = not bool(row["is_active"])
+    db.set_bot_active(bot_id, new_state)
+    if new_state:
+        await bot_manager.start_child_bot(bot_id, row["token"])
+    else:
+        await bot_manager.stop_child_bot(bot_id)
+    await query.answer("انجام شد")
+    row = db.get_bot(bot_id)
+    await query.edit_message_text(
+        f"مدیریت ربات @{row['username']}",
+        reply_markup=kb.bot_manage_keyboard(bot_id, bool(row["is_active"]), bool(row["reactions_enabled"])),
+    )
+
+
+async def toggle_reactions_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    bot_id = int(query.data.split(":")[1])
+    row = db.get_bot(bot_id)
+    if not row or row["owner_id"] != query.from_user.id:
+        await query.answer("دسترسی نداری", show_alert=True)
+        return
+    db.toggle_reactions(bot_id)
+    await query.answer("انجام شد")
+    row = db.get_bot(bot_id)
+    await query.edit_message_text(
+        f"مدیریت ربات @{row['username']}",
+        reply_markup=kb.bot_manage_keyboard(bot_id, bool(row["is_active"]), bool(row["reactions_enabled"])),
+    )
+
+
+async def delete_bot_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    bot_id = int(query.data.split(":")[1])
+    row = db.get_bot(bot_id)
+    if not row or row["owner_id"] != query.from_user.id:
+        await query.answer("دسترسی نداری", show_alert=True)
+        return
+    await bot_manager.stop_child_bot(bot_id)
+    db.delete_bot(bot_id)
+    await query.answer("ربات حذف شد")
+    await query.edit_message_text("ربات‌های تو:", reply_markup=kb.my_bots_keyboard(query.from_user.id))
+
+
+async def bot_stats_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    bot_id = int(query.data.split(":")[1])
+    row = db.get_bot(bot_id)
+    if not row or row["owner_id"] != query.from_user.id:
+        await query.answer("دسترسی نداری", show_alert=True)
+        return
+    count = db.count_bot_subscribers(bot_id)
+    await query.answer(f"👤 تعداد کاربران: {count}", show_alert=True)
+
+
+# ---------------- add button flow ----------------
+async def add_button_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    bot_id = int(query.data.split(":")[1])
+    row = db.get_bot(bot_id)
+    if not row or row["owner_id"] != query.from_user.id:
+        await query.answer("دسترسی نداری", show_alert=True)
+        return ConversationHandler.END
+    context.user_data["target_bot_id"] = bot_id
+    await query.edit_message_text("متن دکمه رو بفرست (چیزی که روی دکمه نوشته میشه):")
+    return WAITING_BUTTON_TEXT
+
+
+async def add_button_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["new_button_text"] = update.message.text.strip()
+    await update.message.reply_text(
+        "یک رنگ برای دکمه انتخاب کن (نزدیک‌ترین چیزی که تلگرام اجازه میده — یک ایموجی رنگی کنار متن):",
+        reply_markup=kb.color_picker_keyboard(),
+    )
+    return WAITING_BUTTON_COLOR
+
+
+async def add_button_color_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    color_name = query.data.split(":", 1)[1]
+    emoji, hex_color = kb.BUTTON_COLORS.get(color_name, ("", "#2AABEE"))
+    context.user_data["new_button_color"] = emoji
+    context.user_data["new_button_hex"] = hex_color
+    await query.edit_message_text("حالا متن پاسخی که وقتی کاربر دکمه رو زد نشون داده بشه رو بفرست:")
+    return WAITING_BUTTON_REPLY
+
+
+async def add_button_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    bot_id = context.user_data["target_bot_id"]
+    raw_text = context.user_data.pop("new_button_text")
+    emoji = context.user_data.pop("new_button_color", "")
+    hex_color = context.user_data.pop("new_button_hex", "#2AABEE")
+    text = f"{emoji} {raw_text}".strip() if emoji else raw_text
+    reply_text = update.message.text.strip()
+    db.add_button(bot_id, text, reply_text, hex_color)
+    await bot_manager.refresh_child_keyboard(bot_id)
+    await update.message.reply_text("✅ دکمه اضافه شد.")
+    return ConversationHandler.END
+
+
+async def list_buttons_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    bot_id = int(query.data.split(":")[1])
+    buttons = db.get_buttons(bot_id)
+    if not buttons:
+        await query.answer("هنوز دکمه‌ای اضافه نکردی", show_alert=True)
+        return
+    text = "\n".join(f"• {b['text']}" for b in buttons)
+    await query.answer()
+    await query.message.reply_text(f"دکمه‌های این ربات:\n{text}")
+
+
+# ---------------- broadcast flow ----------------
+async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    bot_id = int(query.data.split(":")[1])
+    row = db.get_bot(bot_id)
+    if not row or row["owner_id"] != query.from_user.id:
+        await query.answer("دسترسی نداری", show_alert=True)
+        return ConversationHandler.END
+    context.user_data["broadcast_bot_id"] = bot_id
+    await query.edit_message_text("متن پیام همگانی رو بفرست تا برای همه‌ی کاربرای این ربات ارسال بشه:")
+    return WAITING_BROADCAST
+
+
+async def broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    bot_id = context.user_data.pop("broadcast_bot_id")
+    text = update.message.text
+    sent, failed = await bot_manager.broadcast(bot_id, text)
+    await update.message.reply_text(f"📣 ارسال شد به {sent} نفر (ناموفق: {failed})")
+    return ConversationHandler.END
+
+
+# ---------------- force join config flow ----------------
+async def set_forcejoin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    bot_id = int(query.data.split(":")[1])
+    row = db.get_bot(bot_id)
+    if not row or row["owner_id"] != query.from_user.id:
+        await query.answer("دسترسی نداری", show_alert=True)
+        return ConversationHandler.END
+    context.user_data["forcejoin_bot_id"] = bot_id
+    await query.edit_message_text(
+        "یوزرنیم کانالی که کاربرا باید عضوش باشن رو بفرست (مثلا @mychannel).\n"
+        "برای غیرفعال کردن، کلمه‌ی «خاموش» رو بفرست."
+    )
+    return WAITING_FORCEJOIN
+
+
+async def set_forcejoin_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    bot_id = context.user_data.pop("forcejoin_bot_id")
+    text = update.message.text.strip()
+    channel = "" if text in ("خاموش", "off", "-") else text
+    db.set_force_join(bot_id, channel)
+    await update.message.reply_text("✅ تنظیم شد.")
+    return ConversationHandler.END
+
+
+# ---------------- send gift flow ----------------
+async def send_gift_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    bot_id = int(query.data.split(":")[1])
+    row = db.get_bot(bot_id)
+    if not row or row["owner_id"] != query.from_user.id:
+        await query.answer("دسترسی نداری", show_alert=True)
+        return ConversationHandler.END
+    context.user_data["gift_bot_id"] = bot_id
+    await query.edit_message_text(
+        "آیدی عددی کاربری که می‌خوای بهش هدیه بدی رو بفرست (نه یوزرنیم، آیدی عددیش رو — "
+        "کاربر باید قبلاً /start ربات تو رو زده باشه).\n\n"
+        "⚠️ هدیه از موجودی استارز خودِ این ربات کم میشه، نه از حساب تو."
+    )
+    return WAITING_GIFT_TARGET
+
+
+async def send_gift_receive_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    bot_id = context.user_data["gift_bot_id"]
+    try:
+        target_id = int(update.message.text.strip())
+    except ValueError:
+        await update.message.reply_text("آیدی باید عدد باشه. دوباره بفرست یا /cancel بزن.")
+        return WAITING_GIFT_TARGET
+
+    context.user_data["gift_target_id"] = target_id
+    bot_instance = await bot_manager.get_bot_instance(bot_id)
+    if not bot_instance:
+        await update.message.reply_text("ربات پیدا نشد.")
+        return ConversationHandler.END
 
     try:
+        gifts = await list_available_gifts(bot_instance)
+    except Exception as e:
+        await update.message.reply_text(f"❌ نشد لیست هدیه‌ها رو بگیرم: {e}")
+        return ConversationHandler.END
 
-        await application.bot.set_my_commands([
-            BotCommand(
-                "start",
-                "شروع"
-            ),
-            BotCommand(
-                "panel",
-                "پنل مدیریت"
-            ),
-            BotCommand(
-                "id",
-                "آیدی من"
-            ),
-            BotCommand(
-                "botfather",
-                "راهنمای ساخت ربات"
-            ),
-        ])
+    if not gifts:
+        await update.message.reply_text("در حال حاضر هدیه‌ای برای ارسال موجود نیست.")
+        return ConversationHandler.END
 
-    except TelegramError:
-
-        pass
-
-    await load_child_bots()
-
-
-# ============================================================
-# POST SHUTDOWN
-# ============================================================
-
-async def post_shutdown(
-    application
-):
-
-    tokens = list(
-        CHILD_APPS.keys()
+    await update.message.reply_text(
+        "یکی از هدیه‌های زیر رو انتخاب کن (بر اساس تعداد استارز):",
+        reply_markup=kb.gift_pick_keyboard(bot_id, gifts),
     )
+    return ConversationHandler.END
 
-    for token in tokens:
 
-        await stop_child_bot(
-            token
+async def pick_gift_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    _, bot_id_s, gift_id = query.data.split(":", 2)
+    bot_id = int(bot_id_s)
+    row = db.get_bot(bot_id)
+    if not row or row["owner_id"] != query.from_user.id:
+        await query.answer("دسترسی نداری", show_alert=True)
+        return
+    target_id = context.user_data.get("gift_target_id")
+    if not target_id:
+        await query.answer("این درخواست منقضی شده، دوباره از اول شروع کن.", show_alert=True)
+        return
+    bot_instance = await bot_manager.get_bot_instance(bot_id)
+    try:
+        await send_gift(bot_instance, gift_id, target_id)
+        await query.answer("🎁 هدیه ارسال شد!", show_alert=True)
+        await query.edit_message_text("✅ هدیه با موفقیت ارسال شد.")
+    except Exception as e:
+        await query.answer("ناموفق", show_alert=True)
+        await query.edit_message_text(
+            f"❌ ارسال هدیه ناموفق بود — احتمالاً موجودی استارز ربات کافی نیست.\n{e}"
         )
 
 
-# ============================================================
-# BUILD MAIN APPLICATION
-# ============================================================
-
-def build_application():
-
-    if not MAIN_BOT_TOKEN:
-
-        raise RuntimeError(
-            "MAIN_BOT_TOKEN is missing."
-        )
-
-    application = (
-        Application
-        .builder()
-        .token(
-            MAIN_BOT_TOKEN
-        )
-        .post_init(
-            post_init
-        )
-        .post_shutdown(
-            post_shutdown
-        )
-        .build()
+# ---------------- keyboard style ----------------
+async def kbstyle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    bot_id = int(query.data.split(":")[1])
+    row = db.get_bot(bot_id)
+    if not row or row["owner_id"] != query.from_user.id:
+        await query.answer("دسترسی نداری", show_alert=True)
+        return
+    await query.edit_message_text(
+        "نوع کیبورد این ربات رو انتخاب کن:", reply_markup=kb.keyboard_style_pick_keyboard(bot_id)
     )
 
-    application.add_handler(
-        CommandHandler(
-            "start",
-            start
+
+async def setkb_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    _, bot_id_s, style = query.data.split(":")
+    bot_id = int(bot_id_s)
+    row = db.get_bot(bot_id)
+    if not row or row["owner_id"] != query.from_user.id:
+        await query.answer("دسترسی نداری", show_alert=True)
+        return
+    if style == "webapp" and not WEBAPP_BASE_URL:
+        await query.answer(
+            "اول باید WEBAPP_BASE_URL رو توی تنظیمات Railway ست کنی (README رو ببین).",
+            show_alert=True,
         )
+        return
+    was_menu = row["keyboard_style"] == "menu"
+    db.set_keyboard_style(bot_id, style)
+    if style == "menu":
+        await bot_manager.refresh_child_keyboard(bot_id)
+    elif was_menu:
+        bot_instance = await bot_manager.get_bot_instance(bot_id)
+        if bot_instance:
+            import child_bot
+            await child_bot.reset_menu_button(bot_instance)
+    await query.answer("✅ ذخیره شد")
+    row = db.get_bot(bot_id)
+    await query.edit_message_text(
+        f"مدیریت ربات @{row['username']}",
+        reply_markup=kb.bot_manage_keyboard(bot_id, bool(row["is_active"]), bool(row["reactions_enabled"])),
     )
 
-    application.add_handler(
-        CommandHandler(
-            "panel",
-            panel
+
+# ---------------- welcome photo ----------------
+async def set_photo_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    bot_id = int(query.data.split(":")[1])
+    row = db.get_bot(bot_id)
+    if not row or row["owner_id"] != query.from_user.id:
+        await query.answer("دسترسی نداری", show_alert=True)
+        return ConversationHandler.END
+    context.user_data["photo_bot_id"] = bot_id
+    await query.edit_message_text("یک عکس بفرست تا به‌عنوان عکس خوش‌آمدگویی ذخیره بشه:")
+    return WAITING_PHOTO
+
+
+async def set_photo_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.photo:
+        await update.message.reply_text("لطفاً یک عکس بفرست، یا /cancel بزن.")
+        return WAITING_PHOTO
+    bot_id = context.user_data.pop("photo_bot_id")
+    file_id = update.message.photo[-1].file_id
+    db.set_welcome_photo(bot_id, file_id)
+    await update.message.reply_text("✅ عکس خوش‌آمد ذخیره شد.")
+    return ConversationHandler.END
+
+
+# ---------------- paid unlock content ----------------
+async def set_unlock_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    bot_id = int(query.data.split(":")[1])
+    row = db.get_bot(bot_id)
+    if not row or row["owner_id"] != query.from_user.id:
+        await query.answer("دسترسی نداری", show_alert=True)
+        return ConversationHandler.END
+    context.user_data["unlock_bot_id"] = bot_id
+    await query.edit_message_text(
+        "قیمت محتوای قفل‌شده رو به تعداد استارز بفرست (فقط عدد، مثلاً 50):"
+    )
+    return WAITING_UNLOCK_PRICE
+
+
+async def set_unlock_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        price = int(update.message.text.strip())
+        if price < 1:
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text("باید یک عدد مثبت باشه. دوباره بفرست یا /cancel بزن.")
+        return WAITING_UNLOCK_PRICE
+    context.user_data["unlock_price"] = price
+    await update.message.reply_text(
+        "حالا متنی که بعد از پرداخت برای کاربر ارسال بشه رو بفرست:"
+    )
+    return WAITING_UNLOCK_TEXT
+
+
+async def set_unlock_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    bot_id = context.user_data.pop("unlock_bot_id")
+    price = context.user_data.pop("unlock_price")
+    text = update.message.text
+    db.set_unlock(bot_id, price, text)
+    await update.message.reply_text(
+        f"✅ فعال شد. کاربرا با زدن /unlock توی ربات، با {price} استارز بازش می‌کنن."
+    )
+    return ConversationHandler.END
+
+
+async def cancel_conv(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("لغو شد.")
+    return ConversationHandler.END
+
+
+# ---------------- subscription ----------------
+async def subscription_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(
+        "💎 با اشتراک ویژه:\n"
+        f"• تا {PREMIUM_BOT_LIMIT} ربات بساز (به‌جای {FREE_BOT_LIMIT} تا)\n"
+        "• یک ماه اعتبار\n",
+        reply_markup=kb.subscription_keyboard(SUBSCRIPTION_STARS_PRICE),
+    )
+
+
+async def buy_subscription_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await send_subscription_invoice(query.from_user.id, context)
+
+
+# ---------------- hidden admin panel (first-claim) ----------------
+def is_admin(user_id: int) -> bool:
+    if ADMIN_ID and user_id == ADMIN_ID:
+        return True
+    claimed = db.get_setting("admin_user_id")
+    return claimed is not None and int(claimed) == user_id
+
+
+async def admin_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Triggered by the literal command /<ADMIN_SECRET_CODE> (default
+    /kd7d7). First person ever to send it claims the admin panel forever;
+    anyone else sending it later gets no visible reaction at all — the bot
+    just looks like it ignored an unknown command."""
+    user_id = update.effective_user.id
+    claimed = db.get_setting("admin_user_id")
+
+    if claimed is None:
+        db.set_setting("admin_user_id", str(user_id))
+        await update.message.reply_text(
+            "✅ این آیدی برای همیشه به‌عنوان ادمین اصلی این ربات ثبت شد.\n"
+            "از این به بعد فقط با همین کد، از همین آیدی، پنل مدیریت رو می‌بینی."
         )
+    elif int(claimed) != user_id and not (ADMIN_ID and user_id == ADMIN_ID):
+        return  # someone else trying the code — pretend nothing happened
+
+    total_users = len(db.all_user_ids())
+    await update.message.reply_text(
+        "🛠 پنل مدیریت\n"
+        f"👤 کاربران کل: {total_users}\n\n"
+        "برای پیام همگانی به همه‌ی کاربران فکتوری، دستور زیر رو بزن:\n"
+        "/broadcastall <متن پیام>"
     )
 
-    application.add_handler(
-        CommandHandler(
-            "id",
-            my_id
-        )
+
+async def broadcast_all_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        return
+    text = update.message.text.partition(" ")[2]
+    if not text:
+        await update.message.reply_text("استفاده: /broadcastall متن پیام")
+        return
+    ids = db.all_user_ids()
+    sent = 0
+    for uid in ids:
+        try:
+            await context.bot.send_message(uid, text)
+            sent += 1
+        except Exception:
+            pass
+    await update.message.reply_text(f"ارسال شد به {sent} کاربر.")
+
+
+def build_application(token: str) -> Application:
+    app = Application.builder().token(token).build()
+
+    conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(create_bot_start, pattern="^create_bot$"),
+            CallbackQueryHandler(add_button_start, pattern=r"^add_button:\d+$"),
+            CallbackQueryHandler(broadcast_start, pattern=r"^broadcast:\d+$"),
+            CallbackQueryHandler(set_forcejoin_start, pattern=r"^set_forcejoin:\d+$"),
+            CallbackQueryHandler(send_gift_start, pattern=r"^send_gift:\d+$"),
+            CallbackQueryHandler(set_photo_start, pattern=r"^set_photo:\d+$"),
+            CallbackQueryHandler(set_unlock_start, pattern=r"^set_unlock:\d+$"),
+        ],
+        states={
+            WAITING_TOKEN: [MessageHandler(filters.TEXT & ~filters.COMMAND, create_bot_receive_token)],
+            WAITING_BUTTON_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_button_text)],
+            WAITING_BUTTON_COLOR: [CallbackQueryHandler(add_button_color_cb, pattern=r"^pickcolor:")],
+            WAITING_BUTTON_REPLY: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_button_reply)],
+            WAITING_BROADCAST: [MessageHandler(filters.TEXT & ~filters.COMMAND, broadcast_send)],
+            WAITING_FORCEJOIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_forcejoin_receive)],
+            WAITING_GIFT_TARGET: [MessageHandler(filters.TEXT & ~filters.COMMAND, send_gift_receive_target)],
+            WAITING_PHOTO: [MessageHandler(filters.PHOTO, set_photo_receive)],
+            WAITING_UNLOCK_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_unlock_price)],
+            WAITING_UNLOCK_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_unlock_text)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_conv)],
     )
 
-    application.add_handler(
-        CommandHandler(
-            "botfather",
-            botfather_help
-        )
-    )
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("broadcastall", broadcast_all_cmd))
+    app.add_handler(CommandHandler(ADMIN_SECRET_CODE, admin_claim))
+    app.add_handler(conv)
+    app.add_handler(CallbackQueryHandler(check_join_cb, pattern="^check_join$"))
+    app.add_handler(CallbackQueryHandler(captcha_cb, pattern=r"^captcha:"))
+    app.add_handler(CallbackQueryHandler(back_main_cb, pattern="^back_main$"))
+    app.add_handler(CallbackQueryHandler(my_bots_cb, pattern="^my_bots$"))
+    app.add_handler(CallbackQueryHandler(referral_cb, pattern="^referral$"))
+    app.add_handler(CallbackQueryHandler(bot_menu_cb, pattern=r"^bot_menu:\d+$"))
+    app.add_handler(CallbackQueryHandler(toggle_active_cb, pattern=r"^toggle_active:\d+$"))
+    app.add_handler(CallbackQueryHandler(toggle_reactions_cb, pattern=r"^toggle_reactions:\d+$"))
+    app.add_handler(CallbackQueryHandler(delete_bot_cb, pattern=r"^delete_bot:\d+$"))
+    app.add_handler(CallbackQueryHandler(bot_stats_cb, pattern=r"^bot_stats:\d+$"))
+    app.add_handler(CallbackQueryHandler(kbstyle_cb, pattern=r"^kbstyle:\d+$"))
+    app.add_handler(CallbackQueryHandler(setkb_cb, pattern=r"^setkb:"))
+    app.add_handler(CallbackQueryHandler(list_buttons_cb, pattern=r"^list_buttons:\d+$"))
+    app.add_handler(CallbackQueryHandler(pick_gift_cb, pattern=r"^pickgift:"))
+    app.add_handler(CallbackQueryHandler(subscription_cb, pattern="^subscription$"))
+    app.add_handler(CallbackQueryHandler(buy_subscription_cb, pattern="^buy_subscription$"))
+    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
+    from telegram.ext import PreCheckoutQueryHandler
+    app.add_handler(PreCheckoutQueryHandler(precheckout_handler))
 
-    application.add_handler(
-        CallbackQueryHandler(
-            main_callback
-        )
-    )
-
-    application.add_handler(
-        MessageHandler(
-            filters.TEXT
-            & ~filters.COMMAND,
-            main_text
-        )
-    )
-
-    return application
-
-
-# ============================================================
-# MAIN
-# ============================================================
-
-if __name__ == "__main__":
-
-    init_db()
-
-    log.info(
-        "🇮🇷 Iran Golf Telegram ULTRA starting..."
-    )
-
-    application = (
-        build_application()
-    )
-
-    application.run_polling(
-        allowed_updates=Update.ALL_TYPES,
-        drop_pending_updates=True
-    )
+    return app
